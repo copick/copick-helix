@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "copick-helix"
+version = "0.1.0.dev0"
+description = "Fast, data-driven polarity, lattice and in-plane orientation of traced filaments in cryo-ET (copick)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Utz H. Ermel", email = "utz.ermel@czii.org" }]
+dependencies = [
+    "numpy",
+    "scipy",
+    "pandas",
+    "zarr",
+    "mrcfile",
+    "click",
+    "copick>=2.0.0a3,<3",
+]
+
+[project.optional-dependencies]
+models = ["gemmi"]
+tiltseries = ["zarr-particle-tools>=1.0.1"]
+plot = ["matplotlib"]
+dev = ["pytest", "gemmi", "matplotlib"]
+
+[project.entry-points."copick.process.commands"]
+helix_straighten = "copick_helix.cli:straighten"
+helix_polarity = "copick_helix.cli:polarity"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/copick_helix"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
