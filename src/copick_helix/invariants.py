@@ -14,6 +14,7 @@ leading eigenvector of the filament x filament product splits the filaments into
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -88,15 +89,22 @@ def fit_segment(seg: np.ndarray, geom: SegmentGeometry, step: float, sym: Helica
     return SegmentFit(out, cov)
 
 
+def _nanmean(a, axis=0):
+    """nanmean without the empty-slice warning (radii no segment could fit stay nan)."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        return np.nanmean(a, axis=axis)
+
+
 def pooled_rstar(fits: list[SegmentFit], terms: list[Term]) -> dict[Term, int]:
     """R index of each term's pooled amplitude peak."""
-    return {t: int(np.nanargmax(np.nanmean([np.abs(f.coefs[t]) ** 2 for f in fits], axis=0))) for t in terms}
+    return {t: int(np.nanargmax(_nanmean([np.abs(f.coefs[t]) ** 2 for f in fits]))) for t in terms}
 
 
 def pooled_weights(fits: list[SegmentFit], terms: list[Term]) -> dict[Term, np.ndarray]:
     w = {}
     for t in terms:
-        amp = np.sqrt(np.nanmean([np.abs(f.coefs[t]) ** 2 for f in fits], axis=0))
+        amp = np.sqrt(_nanmean([np.abs(f.coefs[t]) ** 2 for f in fits]))
         w[t] = np.nan_to_num(amp / np.nanmax(amp))
     return w
 
@@ -111,7 +119,7 @@ def invariants(fits: list[SegmentFit], cfg: InvariantConfig, rstar: dict[Term, i
             ref = c[rstar[t]]
             if np.isfinite(ref) and abs(ref) > 0:
                 hs.append(c * np.conj(ref) / abs(ref))
-        out[("radial", t)] = np.nanmean(np.array(hs), axis=0) if hs else None
+        out[("radial", t)] = _nanmean(np.array(hs)) if hs else None
     for a, b, c in cfg.triples:
         vals = []
         for f in fits:
