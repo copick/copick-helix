@@ -165,6 +165,8 @@ class IterativeResult:
     runs: pd.DataFrame
     reference: np.ndarray  # consensus reference g (cropped grid), oriented to 'plus' if a model was given
     strength: dict = field(default_factory=dict)
+    segments: pd.DataFrame | None = None  # per-segment registration to ``reference`` (see ``assign``)
+    grid: dict = field(default_factory=dict)  # nphi, nz, dz of the alignment grid
 
 
 def assign(g_by_filament: dict[str, np.ndarray], r, n_full, Z_full, cfg: IterativeConfig,
@@ -234,4 +236,20 @@ def assign(g_by_filament: dict[str, np.ndarray], r, n_full, Z_full, cfg: Iterati
                      "bootstrap": boot, "start_stability": float(stability[f]),
                      "confident": bool(boot >= 0.95 and stability[f] >= 0.9)})
     G = cons["G"] if cons["orient"] > 0 else np.conj(cons["G"])
-    return IterativeResult(pd.DataFrame(rows), pd.DataFrame(run_rows), G, strengths)
+    # per-segment registration to the ORIENTED reference G: G ~ h rotated by +roll about z and shifted by +shift along
+    # z, with h = the segment (flip False) or its 180-deg-about-x copy (flip True). A global flip of the reference
+    # conjugates everything: the flip of every filament inverts and (k, l) -> (-k, -l).
+    seg_rows = []
+    flip_f = cons["pol_oriented"] < 0
+    for f, name in enumerate(names):
+        idx = np.where(fil == f)[0]
+        a = _aligned(sp, gs, cons["pol"][fil] < 0, cons["k"], cons["l"], dz)
+        G_loo = a.sum(0) - a[idx].sum(0)
+        G_loo = G_loo if cons["orient"] > 0 else np.conj(G_loo)
+        h = np.conj(gs[idx]) if flip_f[f] else gs[idx]
+        cc, kk, ll = sp.best(G_loo, h)
+        for j, (c, k_, l_) in enumerate(zip(cc, kk, ll)):
+            seg_rows.append({"filament": name, "segment": j, "flip": bool(flip_f[f]), "k": int(k_), "l": int(l_),
+                             "roll_deg": float(360.0 * k_ / sp.nphi), "shift_A": float(l_ * dz), "score": float(c)})
+    return IterativeResult(pd.DataFrame(rows), pd.DataFrame(run_rows), G, strengths, pd.DataFrame(seg_rows),
+                           {"nphi": sp.nphi, "nz": sp.nz, "dz": dz})

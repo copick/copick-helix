@@ -22,7 +22,7 @@ def stretch_axis(st, factor: float):
     from scipy.ndimage import map_coordinates
 
     vol = st.vol
-    pos = np.arange(0, vol.shape[0] - 1, factor)
+    pos = np.arange(0, vol.shape[0] - 1 + 1e-6, factor)
     grid = np.meshgrid(pos, np.arange(vol.shape[1]), np.arange(vol.shape[2]), indexing="ij")
     v = map_coordinates(vol, grid, order=1).astype(np.float32)
     idx = np.clip(np.round(pos).astype(int), 0, len(st.beam_local) - 1)
@@ -55,6 +55,8 @@ class Family:
     support_eq_band: float = 0.0
     recentre_window: float = 300.0  # A
     recentre_max_shift: float = 100.0  # A, cap on a window's correction
+    screw: Callable = None  # reference params -> (P A, omega deg): the lattice's symmetry step along the axis
+    plus_at_minus_z: bool = False  # the labelling model (and so the oriented reference) has its plus end at -z
     notes: dict = field(default_factory=dict)
 
     def support(self, z_max: float, n_max: int, **params) -> Support:
@@ -106,7 +108,7 @@ def microtubule(N: int = 13, S: int = 3) -> Family:
         triples=[(eq, s0, sp), (eq, sm, s0)], r_out=150.0, r_mask=165.0, cyl_band=(60.0, 165.0),
         segment_length=1250.0, in_plane_half_width=200.0, recentre_profile=_ring(112.0, 20.0),
         profile_band=(85.0, 135.0), measure=measure, measure_min_quality=3.0, to_reference_grid=to_reference_grid,
-        label_model=label_model,
+        label_model=label_model, screw=lambda p: (2.0 * p["monomer_repeat"], 0.0), plus_at_minus_z=True,
         notes={"lattice_readout": "protofilament number from the real-space equator count (lattice.equator_count)",
                "polarity_convention": "points ordered minus -> plus when polarity_known",
                "model": "PDB 6DPV (undecorated GDP MT); plus end = side of each monomer's nucleotide"})
@@ -117,7 +119,7 @@ def helical_family(name: str, polar: bool, rise: float, twist: float, terms, tri
                    in_plane_half_width: float = 200.0, plane_tol_bins: float = 0.5, support_z_bins: float = 1.0,
                    support_drop_n0: bool = True, support_eq_nmax: int = -1, support_eq_band: float = 0.0,
                    recentre_window: float = 300.0, recentre_max_shift: float = 100.0, min_line_snr: float = 3.0,
-                   notes: dict | None = None) -> Family:
+                   plus_at_minus_z: bool = False, notes: dict | None = None) -> Family:
     """A 1-start helical family (rise, physical twist) whose per-filament rise and twist come from two measured layer
     lines (``fit_lines``: two Terms with different n). Filaments are stretched to the reference rise for the iterative
     reference (a twist mismatch moves layer lines by << 1 Z bin per segment)."""
@@ -149,7 +151,8 @@ def helical_family(name: str, polar: bool, rise: float, twist: float, terms, tri
                   measure=measure, measure_min_quality=min_line_snr, to_reference_grid=to_reference_grid,
                   label_model=label_model, plane_tol_bins=plane_tol_bins, support_z_bins=support_z_bins,
                   support_drop_n0=support_drop_n0, support_eq_nmax=support_eq_nmax, support_eq_band=support_eq_band,
-                  recentre_window=recentre_window, recentre_max_shift=recentre_max_shift, notes=notes or {})
+                  recentre_window=recentre_window, recentre_max_shift=recentre_max_shift,
+                  screw=lambda p: (p["rise"], p["twist"]), plus_at_minus_z=plus_at_minus_z, notes=notes or {})
 
 
 def intermediate_filament() -> Family:
