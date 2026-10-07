@@ -56,26 +56,28 @@ src/copick_helix/
   invariants.py      # phase invariants: invariants, relative assignment, confidence
   iterative.py       # data-built reference: alignment, per-filament polarity, convergence, cross-validation
   lattice.py         # MT protofilament number (equator count)
-  models.py          # helical models from PDB (optional gemmi): labels and simulations
+  models.py          # helical models from PDB (gemmi): labels and simulations
   io.py              # copick in (filaments, tomograms, tilt geometry) / out (oriented filaments, polarity_known, metadata)
-  tiltseries.py      # optional: local CTF-corrected segment reconstructions through the zarr-particle-tools API
+  tiltseries.py      # local CTF-corrected segment reconstructions through the zarr-particle-tools API
   cli.py             # click commands, registered into the copick CLI by entry point
-tests/               # synthetic only (fast): MT plus/minus split, actin plus/minus split, IF null
+tests/               # synthetic only (fast): MT plus/minus split, actin plus/minus split, an exactly apolar control
 ```
 
 ## Dependencies and release
 
-- Runtime: numpy, scipy, pandas, zarr, mrcfile, click, copick >= 2.0.0a3 (filament model with `polarity_known`).
-- Optional extras: `[models]` gemmi, `[tiltseries]` zarr-particle-tools, `[plot]` matplotlib.
+- Runtime: numpy, scipy, pandas, zarr, mrcfile, click, gemmi (atomic models for labels), zarr-particle-tools
+  (tilt-series reconstructions), and copick >= 1.28 on `main` or copick 2 on the `v2.0` branch. Both copick lines
+  have the filament model with `polarity_known`.
+- No requirement is hidden in an extra.
 - **No circular dependency.** zarr-particle-tools depends on copick (core) but not on copick-utils. This package
-  depends on copick, and on zarr-particle-tools only through the optional extra. Neither copick nor copick-utils
-  depends on it.
+  depends on copick and zarr-particle-tools. Neither copick nor copick-utils depends on it.
 - It appears in the copick CLI through copick's plugin entry points (as copick-utils does with
   `copick.process.commands`), so copick needs no change.
 - Keeping it out of copick-utils keeps gemmi, zarr-particle-tools and the scientific stack out of copick-utils'
   dependencies.
 - Proposed home: a repository under the copick organisation. The name is to be decided; candidates are
-  `copick-helix` and `copick-polarity`, and IF has no polarity, which argues for the former.
+  `copick-helix` and `copick-polarity`. The package also measures lattices and in-plane rotation, which argues for
+  the former.
 - **Copick convention to settle:** with `polarity_known: true` the point order follows the polarity, but copick does
   not say which end comes first. Proposal: minus -> plus (MT), pointed -> barbed (actin). Record it in the filament
   `metadata` now, and propose a `FilamentSpec` field upstream (FilamentSpec already allows extra keys).

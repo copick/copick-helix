@@ -8,9 +8,11 @@ series sampled it.
 ## Install
 
 ```bash
-pip install -e ".[models]"        # gemmi: atomic models, only to name which polarity group is 'plus'
-pip install -e ".[tiltseries]"    # zarr-particle-tools: local CTF-corrected reconstructions from tilt series
+pip install -e .        # branch main: copick 1.x; branch v2.0: copick 2
 ```
+
+gemmi (atomic models, used to name which polarity group is 'plus') and zarr-particle-tools (local CTF-corrected
+reconstructions from tilt series) are regular dependencies.
 
 ## Use
 
@@ -47,8 +49,8 @@ copick process helix-polarity -c config.json \
 
 ## Dependencies
 
-copick (core) only. zarr-particle-tools and gemmi are optional extras. Neither copick nor copick-utils depends on
-this package, so there is no cycle. The commands enter the copick CLI through the `copick.process.commands`
-entry point.
+copick (1.x on `main`, 2.x on `v2.0`), zarr-particle-tools and gemmi. zarr-particle-tools depends on copick core
+but not on copick-utils, and neither copick nor copick-utils depends on this package, so there is no cycle. The
+commands enter the copick CLI through the `copick.process.commands` entry point.
 
 See `PLAN.md` for the design, the filament families and the status.

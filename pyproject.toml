@@ -17,14 +17,13 @@ dependencies = [
     "zarr",
     "mrcfile",
     "click",
-    "copick>=2.0.0a3,<3",
+    "copick>=1.28.0,<2",
+    "gemmi",
+    "zarr-particle-tools>=1.0.1",
 ]
 
 [project.optional-dependencies]
-models = ["gemmi"]
-tiltseries = ["zarr-particle-tools>=1.0.1"]
-plot = ["matplotlib"]
-dev = ["pytest", "gemmi", "matplotlib"]
+dev = ["pytest", "matplotlib"]
 
 [project.entry-points."copick.process.commands"]
 helix_straighten = "copick_helix.cli:straighten"
