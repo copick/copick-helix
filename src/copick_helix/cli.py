@@ -128,10 +128,17 @@ def polarity(config, run_names, input_uri, tomogram, family_name, tilt_range, ti
     model = family.label_model(next(iter(fils.values()))) if (label and family.label_model) else None
     which = {m.strip() for m in methods.split(",")}
     mc, mc_summary = run_invariants(family, fils, params, model) if "invariants" in which else (None, None)
-    it = run_iterative(family, fils, params, model) if "iterative" in which else None
+    if "iterative" in which and not gate["detected"]:
+        # no polarity can be called, so skip the polarity search: a few seeded starts give the registration
+        click.echo("lattice not detected: iterative reference run for registration only (3 seeded starts)")
+        it = run_iterative(family, fils, params, model, random_starts=0, seed_starts=3, strength_draws=0)
+    else:
+        it = run_iterative(family, fils, params, model) if "iterative" in which else None
     table = combine(mc, it).merge(params.reset_index(), on="filament", how="left")
     if "seed" in table:
         table["seed"] = table["seed"] & gate["detected"]
+    if not gate["detected"] and "call" in table:
+        table["call"] = "uncertain"  # per-method calls stay in inv_call / it_call for inspection
     res = Result(table, {k: v for k, v in (mc_summary or {}).items() if k != "segments"}, it)
     save(res, work_dir)
     ref_path = None

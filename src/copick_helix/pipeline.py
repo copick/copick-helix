@@ -66,8 +66,12 @@ def run_invariants(family: Family, filaments: dict[str, Straightened], params: p
 
 
 def run_iterative(family: Family, filaments: dict[str, Straightened], params: pd.DataFrame, model=None,
-                  random_starts: int = 20, seed_starts: int = 5):
-    """Stretch each filament to the family's common reference geometry, then the data-built reference."""
+                  random_starts: int = 20, seed_starts: int = 5, strength_draws: int = 8):
+    """Stretch each filament to the family's common reference geometry, then the data-built reference.
+
+    The full polarity search (many random and seeded starts, plus the random-polarity strength baseline) is what makes
+    a call trustworthy; for registration alone (e.g. a lattice too weak to call polarity) a few seeded starts and no
+    strength baseline suffice: ``random_starts=0, seed_starts=3, strength_draws=0``."""
     cfg = iterative.IterativeConfig(rmin=family.cyl_band[0], rmax=family.cyl_band[1], random_starts=random_starts,
                                     seed_starts=seed_starts, support_z_bins=family.support_z_bins)
     cfg.support = family.support(z_max=cfg.zmax, n_max=cfg.nmax)
@@ -90,7 +94,7 @@ def run_iterative(family: Family, filaments: dict[str, Straightened], params: pd
         _, _, _, gm = iterative.segment_g(mvol, SegmentGeometry(np.array([1.0, 0, 0]), np.array([0, 0, 1.0])),
                                           next(iter(filaments.values())).step, iterative.IterativeConfig(
                                               rmin=family.cyl_band[0], rmax=family.cyl_band[1], half_wedge=90.0))
-    return iterative.assign(gby, r, n, Z, cfg, model_plus_g=gm)
+    return iterative.assign(gby, r, n, Z, cfg, model_plus_g=gm, strength_draws=strength_draws)
 
 
 def lattice_gate(family: Family, filaments: dict[str, Straightened], params: pd.DataFrame, rng_seed: int = 0,

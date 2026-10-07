@@ -170,9 +170,12 @@ class IterativeResult:
 
 
 def assign(g_by_filament: dict[str, np.ndarray], r, n_full, Z_full, cfg: IterativeConfig,
-           model_plus_g: np.ndarray | None = None, rng_seed: int = 7, bootstrap_draws: int = 2000) -> IterativeResult:
+           model_plus_g: np.ndarray | None = None, rng_seed: int = 7, bootstrap_draws: int = 2000,
+           strength_draws: int = 8) -> IterativeResult:
     """Run all starts and summarise. g_by_filament: name -> full g of its segments (S, R, n, Z), one segment length.
-    model_plus_g: optional full g of a model in the 'plus' orientation, used only to orient the final global sign."""
+    model_plus_g: optional full g of a model in the 'plus' orientation, used only to orient the final global sign.
+    strength_draws: reruns with fixed random polarities, the baseline for the reference's polarity strength (0 skips
+    it, e.g. when only the registration is wanted)."""
     sp = Space(r, n_full, Z_full, cfg)
     dz = 1.0 / (len(Z_full) * abs(Z_full[1] - Z_full[0]))
     names = list(g_by_filament)
@@ -215,9 +218,10 @@ def assign(g_by_filament: dict[str, np.ndarray], r, n_full, Z_full, cfg: Iterati
         return 1 - sp.cc_max(G, np.conj(G))
 
     s_rand = [strength(iterate(sp, gs, fil, nfil, rng.choice([-1, 1], nfil), cons["k"], cons["l"], dz,
-                               fixed_pol=True, max_iter=cfg.max_iter)["G"]) for _ in range(8)]
-    strengths = {"consensus": strength(cons["G"]), "random_fixed_mean": float(np.mean(s_rand)),
-                 "random_fixed_std": float(np.std(s_rand))}
+                               fixed_pol=True, max_iter=cfg.max_iter)["G"]) for _ in range(strength_draws)]
+    strengths = {"consensus": strength(cons["G"]),
+                 "random_fixed_mean": float(np.mean(s_rand)) if s_rand else float("nan"),
+                 "random_fixed_std": float(np.std(s_rand)) if s_rand else float("nan")}
     if gm is not None:
         strengths["model"] = strength(gm)
 
@@ -241,10 +245,11 @@ def assign(g_by_filament: dict[str, np.ndarray], r, n_full, Z_full, cfg: Iterati
     # conjugates everything: the flip of every filament inverts and (k, l) -> (-k, -l).
     seg_rows = []
     flip_f = cons["pol_oriented"] < 0
+    a = _aligned(sp, gs, cons["pol"][fil] < 0, cons["k"], cons["l"], dz)
+    a_sum = a.sum(0)
     for f, name in enumerate(names):
         idx = np.where(fil == f)[0]
-        a = _aligned(sp, gs, cons["pol"][fil] < 0, cons["k"], cons["l"], dz)
-        G_loo = a.sum(0) - a[idx].sum(0)
+        G_loo = a_sum - a[idx].sum(0)
         G_loo = G_loo if cons["orient"] > 0 else np.conj(G_loo)
         h = np.conj(gs[idx]) if flip_f[f] else gs[idx]
         cc, kk, ll = sp.best(G_loo, h)
