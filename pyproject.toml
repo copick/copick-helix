@@ -17,7 +17,7 @@ dependencies = [
     "zarr",
     "mrcfile",
     "click",
-    "copick>=1.28.0,<2",
+    "copick>=2.0.0a3,<3",
     "gemmi",
     "zarr-particle-tools>=1.0.1",
     "starfile",
