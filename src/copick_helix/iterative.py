@@ -35,7 +35,7 @@ class IterativeConfig:
     hp: float | None = 400.0
     half_wedge: float = 45.0
     support: Support | None = None  # family support; None keeps everything except the prototype's equatorial rule
-    support_z_bins: int = 1  # half-width (in Z bins) of a layer line in the support mask
+    support_z_bins: float = 1.0  # half-width (in Z bins) of a layer line in the support mask
     eq_band: float = 1 / 250.0  # prototype rule (support None): drop n = 0 and |n| <= eq_nmax for |Z| < eq_band
     eq_nmax: int = 8
     random_starts: int = 20

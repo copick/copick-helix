@@ -17,7 +17,7 @@ from copick.cli.util import add_config_option, add_debug_option, add_run_names_o
 from . import io
 from .families import get_family
 from .geometry import Straightened, TiltGeometry, straighten as straighten_one
-from .pipeline import Result, combine, measure_parameters, run_iterative, run_invariants, save
+from .pipeline import Result, combine, lattice_gate, measure_parameters, run_invariants, run_iterative, save
 
 
 def _filament_uri(uri: str):
@@ -54,7 +54,8 @@ def _straighten_all(config, run_names, input_uri, tomogram, family, tilt_range, 
             if tomo is None:
                 tomo = io.read_tomogram(root, run, vs, tomo_type)
                 tomo = (tomo - tomo.mean()) / tomo.std()
-            st = straighten_one(pts, tomo, vs, family, geom, normalise=False)
+            st = straighten_one(pts, tomo, vs, family, geom, normalise=False, window=family.recentre_window,
+                                lim_A=family.recentre_max_shift)
             st.meta.update({"run": run, "instance_id": int(iid), "source": input_uri, "tomogram": tomogram})
             st.save(stem)
             out[f"{run}_f{iid}"] = st
@@ -105,6 +106,10 @@ def polarity(config, run_names, input_uri, tomogram, family_name, tilt_range, ti
     root, fils = _straighten_all(config, run_names, input_uri, tomogram, family, tilt_range, tilt_axis,
                                  min_length or 2 * family.segment_length, work_dir)
     params = measure_parameters(family, fils)
+    gate = lattice_gate(family, fils, params)
+    click.echo("lattice gate (pooled enrichment, data / decoy): " +
+               ", ".join(f"{k}: {a:.1f}/{b:.1f}" for k, a_b in gate["terms"].items() for a, b in [a_b]) +
+               ("" if gate["detected"] else "  -> lattice NOT detected: no filament gets polarity_known"))
     model = family.label_model(next(iter(fils.values()))) if (label and family.label_model) else None
     which = {m.strip() for m in methods.split(",")}
     mc, mc_summary = run_invariants(family, fils, params, model) if "invariants" in which else (None, None)
@@ -112,7 +117,8 @@ def polarity(config, run_names, input_uri, tomogram, family_name, tilt_range, ti
     table = combine(mc, it).merge(params.reset_index(), on="filament", how="left")
     res = Result(table, {k: v for k, v in (mc_summary or {}).items() if k != "segments"}, it)
     save(res, work_dir)
-    json.dump({"family": family.name, "invariants": res.invariants_summary, "iterative_strength": it.strength if it else None},
+    json.dump({"family": family.name, "invariants": res.invariants_summary, "iterative_strength": it.strength if it else None,
+               "lattice_gate": {"detected": gate["detected"], "terms": {str(k): v for k, v in gate["terms"].items()}}},
               open(os.path.join(work_dir, "summary.json"), "w"), default=str)
     click.echo(table.to_string(index=False))
     if output_uri and family.polar:
@@ -129,6 +135,7 @@ def polarity(config, run_names, input_uri, tomogram, family_name, tilt_range, ti
         for run, items in by_run.items():
             src = {iid: f for iid, _, f in io.read_filaments(root, run, *_filament_uri(input_uri))}
             io.write_oriented(root, run, obj, user, session,
-                              [{"source": src[iid], "first_is_plus": call == "plus", "known": known and call in ("plus", "minus"),
+                              [{"source": src[iid], "first_is_plus": call == "plus",
+                                "known": known and call in ("plus", "minus") and gate["detected"],
                                 "info": info} for iid, call, known, info in items], family.name.split("_")[0])
         click.echo(f"wrote {output_uri} for {len(by_run)} runs")

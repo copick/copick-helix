@@ -63,3 +63,53 @@ def equator_count(vol: np.ndarray, step: float, beam, tilt_axis, orders=range(9,
     pw = {k: float((r[rsel, None] * np.abs(g[rsel][:, np.where(n == k)[0][0]][:, zsel]) ** 2).sum()) for k in orders}
     tot = sum(pw.values())
     return {"n_best": int(max(pw, key=pw.get)), "share": {k: v / tot for k, v in pw.items()}}
+
+
+def layer_scan(vol: np.ndarray, step: float, order: int, z_pred: float, frac: float = 0.15, r_max: float = 80.0,
+               n_z: int = 241) -> tuple[np.ndarray, np.ndarray]:
+    """Power of Bessel order ``order`` against Z in [z_pred (1 - frac), z_pred (1 + frac)] for a whole straightened
+    filament (exact DFT along z, Hann window, radially weighted). Returns (Z, P)."""
+    c = vol.shape[1] // 2
+    r, _, cyl = cylindrical(vol - vol.mean(), step, 4.0, r_max, step / 2, 256, centre=(c, c))
+    a = np.fft.fft(cyl, axis=1)
+    nidx = np.fft.fftfreq(256, 1 / 256).round().astype(int)
+    zc = np.arange(cyl.shape[2]) * step
+    an = a[:, np.where(nidx == order)[0][0], :] * np.hanning(len(zc))[None, :]
+    Zs = np.linspace(z_pred * (1 - frac), z_pred * (1 + frac), n_z)
+    P = np.sum(r[:, None] * np.abs(an @ np.exp(-2j * np.pi * np.outer(zc, Zs))) ** 2, axis=0)
+    return Zs, P
+
+
+def rise_twist_from_lines(vol: np.ndarray, step: float, symmetry, line_a, line_b, r_max: float = 80.0,
+                          frac: float = 0.15) -> dict:
+    """Rise and twist of a helical filament from the measured positions of two layer lines (Terms with different n).
+
+    With Z(n, m) = (m - n * twist / 360) / rise, two lines give a 2 x 2 linear system in (1/rise, twist/360/rise).
+    The predicted positions come from ``symmetry`` (the family's prior). Also returns each line's peak / median power
+    over the scan (a per-filament lattice signal-to-noise)."""
+    out, zs = {}, []
+    for key, t in (("a", line_a), ("b", line_b)):
+        Z, P = layer_scan(vol, step, t.n, symmetry.Z(t), frac=frac, r_max=r_max)
+        zs.append(Z[np.argmax(P)])
+        out[f"snr_{t.n}_{t.m}"] = float(P.max() / np.median(P))
+    A = np.array([[line_a.m, -line_a.n], [line_b.m, -line_b.n]], float)
+    inv_h, tau_h = np.linalg.solve(A, np.array(zs))
+    out["rise"] = float(1.0 / inv_h)
+    out["twist"] = float(360.0 * tau_h / inv_h)
+    return out
+
+
+def lattice_enrichment(power_nz: np.ndarray, n: np.ndarray, Z: np.ndarray, symmetry, terms, near=(3, 12)) -> dict:
+    """Pooled lattice gate: power at each term's (n, nearest Z bin) over the median power of the same n at Z bins
+    ``near`` bins away. power_nz: summed radially weighted |g|^2 over segments, on the (n, Z) FFT grid. Values near 1
+    mean no helical order is detectable; compare with phase-scrambled decoys."""
+    dz = abs(Z[1] - Z[0])
+    out = {}
+    for t in terms:
+        i = np.where(n == t.n)[0]
+        if not len(i):
+            continue
+        j = int(np.argmin(np.abs(Z - symmetry.Z(t))))
+        nb = [k for k in range(len(Z)) if near[0] <= abs(Z[k] - Z[j]) / dz <= near[1]]
+        out[(t.n, t.m)] = float(power_nz[i[0], j] / np.median(power_nz[i[0], nb]))
+    return out

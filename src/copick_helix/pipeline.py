@@ -45,7 +45,7 @@ def measure_parameters(family: Family, filaments: dict[str, Straightened]) -> pd
 def run_invariants(family: Family, filaments: dict[str, Straightened], params: pd.DataFrame, model=None,
                 half_wedge: float = 44.0):
     cfg = invariants.InvariantConfig(terms=family.terms, triples=family.triples, r_out=family.r_out, r_mask=family.r_mask,
-                                half_wedge=half_wedge)
+                                     half_wedge=half_wedge, plane_tol_frac=family.plane_tol_bins)
     fits = {}
     planes = None
     for name, st in filaments.items():
@@ -59,7 +59,7 @@ def run_invariants(family: Family, filaments: dict[str, Straightened], params: p
     if model is not None:
         mvol, mparams = model
         mcfg = invariants.InvariantConfig(terms=family.terms, triples=family.triples, r_out=family.r_out,
-                                     r_mask=family.r_mask, half_wedge=90.0)
+                                          r_mask=family.r_mask, half_wedge=90.0, plane_tol_frac=family.plane_tol_bins)
         model_fits = [invariants.fit_segment(mvol - mvol.mean(), SegmentGeometry(np.array([1.0, 0, 0]), np.array([0, 0, 1.0])),
                                           next(iter(filaments.values())).step, family.symmetry(**mparams), mcfg, planes)]
     return invariants.assign(fits, cfg, model_fits)
@@ -69,7 +69,7 @@ def run_iterative(family: Family, filaments: dict[str, Straightened], params: pd
                   random_starts: int = 20, seed_starts: int = 5):
     """Stretch each filament to the family's common reference geometry, then the data-built reference."""
     cfg = iterative.IterativeConfig(rmin=family.cyl_band[0], rmax=family.cyl_band[1], random_starts=random_starts,
-                                    seed_starts=seed_starts)
+                                    seed_starts=seed_starts, support_z_bins=family.support_z_bins)
     cfg.support = family.support(z_max=cfg.zmax, n_max=cfg.nmax)
     gby = {}
     r = n = Z = None
@@ -91,6 +91,40 @@ def run_iterative(family: Family, filaments: dict[str, Straightened], params: pd
                                           next(iter(filaments.values())).step, iterative.IterativeConfig(
                                               rmin=family.cyl_band[0], rmax=family.cyl_band[1], half_wedge=90.0))
     return iterative.assign(gby, r, n, Z, cfg, model_plus_g=gm)
+
+
+def lattice_gate(family: Family, filaments: dict[str, Straightened], params: pd.DataFrame, rng_seed: int = 0,
+                 min_ratio: float = 2.0) -> dict:
+    """Is the family's helical lattice detectable at all? Pooled power at each phase-invariant term against the same
+    for phase-scrambled copies of the segments (identical power spectra, no helical order).
+
+    Returns {"terms": {(n, m): (data, decoy)}, "detected": bool}: detected when at least one term's enrichment exceeds
+    ``min_ratio`` times its decoy value."""
+    from .lattice import lattice_enrichment
+
+    rng = np.random.default_rng(rng_seed)
+    cfg = iterative.IterativeConfig(rmin=family.cyl_band[0], rmax=family.cyl_band[1])
+    pooled = {"data": None, "decoy": None}
+    n = Z = None
+    for name, st in filaments.items():
+        v, beam, tilt = family.to_reference_grid(st, {k: params.loc[name, k] for k in family.reference_params})
+        nseg = int(round(family.segment_length / st.step))
+        for k in range(v.shape[0] // nseg):
+            sl = slice(k * nseg, (k + 1) * nseg)
+            seg = v[sl] - v[sl].mean()
+            geom = SegmentGeometry(np.median(beam[sl], 0), np.median(tilt[sl], 0))
+            Fs = np.fft.rfftn(seg)
+            decoy = np.fft.irfftn(np.abs(Fs) * np.exp(1j * np.angle(np.fft.rfftn(rng.normal(size=seg.shape)))),
+                                  s=seg.shape).astype(np.float32)
+            for key, vol in (("data", seg), ("decoy", decoy)):
+                r, n, Z, g = iterative.segment_g(vol, geom, st.step, cfg)
+                p = np.tensordot(r, np.abs(g) ** 2, axes=(0, 0))
+                pooled[key] = p if pooled[key] is None else pooled[key] + p
+    sym = family.symmetry(**family.reference_params)
+    d = lattice_enrichment(pooled["data"], n, Z, sym, family.terms)
+    q = lattice_enrichment(pooled["decoy"], n, Z, sym, family.terms)
+    terms = {k: (d[k], q[k]) for k in d}
+    return {"terms": terms, "detected": bool(any(a > min_ratio * max(b, 1.0) for a, b in terms.values()))}
 
 
 def combine(mc: pd.DataFrame | None, it: iterative.IterativeResult | None, min_projection: float = 0.6) -> pd.DataFrame:

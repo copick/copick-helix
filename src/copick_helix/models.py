@@ -149,3 +149,65 @@ def on_grid(xyz, w, step: float, n_inplane: int, length: float, res: float = 10.
     vol = density(xyz, w, apix=step / 2, box_xy=(2 * n_inplane) * step / 2, length=length)
     vol = lowpass(vol, step / 2, res)[::2, 1::2, 1::2]
     return vol[: int(round(length / step)), :n_inplane, :n_inplane]
+
+
+class HelicalModel:
+    """A long helical filament built from a deposited model with helical symmetry (rise A, twist deg).
+
+    One axial slab of height ``rise`` from the middle of the deposited model holds one asymmetric unit; copies of it
+    by k helical steps build the filament. The axis and the twist sign are fitted by symmetry self-consistency, so the
+    deposited convention does not matter."""
+
+    def __init__(self, pdb_id: str, rise: float, twist: float, cif: str | None = None):
+        import gemmi
+        from scipy.optimize import minimize
+        from scipy.spatial import cKDTree
+
+        st = gemmi.read_structure(fetch_pdb(pdb_id, cif))
+        xyz, w = [], []
+        for ch in st[0]:
+            for r in ch:
+                for a in r:
+                    xyz.append(a.pos.tolist())
+                    w.append(Z_OF.get(a.element.name.upper(), 6))
+        xyz, w = np.array(xyz), np.array(w, float)
+        zmid = np.median(xyz[:, 2])
+        z_lo, z_hi = zmid - 2 * rise, zmid + 2 * rise
+        tree = cKDTree(xyz)
+        rng = np.random.default_rng(0)
+        sel = np.where((xyz[:, 2] >= z_lo) & (xyz[:, 2] < z_hi))[0]
+        sel = rng.choice(sel, min(4000, len(sel)), replace=False)
+
+        def mismatch(p, tw):
+            c = np.array([p[0], p[1], 0.0])
+            moved = (xyz[sel] - c) @ _rotz(np.radians(tw)).T + c + np.array([0, 0, rise])
+            return float(np.median(tree.query(moved)[0]))
+
+        best = None
+        for sign in (1, -1):
+            res = minimize(lambda p: mismatch(p, sign * abs(twist)), xyz[:, :2].mean(0), method="Nelder-Mead",
+                           options={"xatol": 0.05, "fatol": 1e-3})
+            if best is None or res.fun < best[2]:
+                best = (res.x, sign * abs(twist), float(res.fun))
+        self.axis_xy, self.twist_deposited, self.mismatch = best
+        self.rise = rise
+        keep = (xyz[:, 2] >= zmid) & (xyz[:, 2] < zmid + rise)
+        self.unit = xyz[keep] - np.array([self.axis_xy[0], self.axis_xy[1], zmid])
+        self.unit_w = w[keep]
+
+    def atoms(self, length: float, flip: bool = False):
+        """Filament along z in [0, length), axis through x = y = 0; flip: 180 deg about x (the other polarity)."""
+        n = int(np.ceil(length / self.rise)) + 2
+        xyz = np.vstack([self.unit @ _rotz(np.radians(self.twist_deposited * k)).T + np.array([0, 0, self.rise * k])
+                         for k in range(-1, n)])
+        w = np.tile(self.unit_w, n + 1)
+        keep = (xyz[:, 2] >= 0) & (xyz[:, 2] < length)
+        xyz, w = xyz[keep], w[keep]
+        if flip:
+            xyz = xyz * np.array([1, -1, -1]) + np.array([0, 0, length])
+        return xyz, w
+
+
+def _rotz(phi):
+    c, s = np.cos(phi), np.sin(phi)
+    return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1.0]])
