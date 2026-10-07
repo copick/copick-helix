@@ -105,3 +105,29 @@ tests/               # synthetic only (fast): MT plus/minus split, actin plus/mi
 - Tilt geometry and CTF (10521): `/hpc/projects/group.czii/utz.ermel/portal_avg/10521/microtubule/Import/job001/`
   (read only).
 - Prototype results: `/hpc/projects/group.czii/utz.ermel/mt-polarity/results/`.
+
+## Decisions since the first draft (2026-10-07)
+
+- **Copick lines:** `main` targets copick 1 (>= 1.28) and `v2.0` adds one commit pinning copick 2; the code is shared.
+  gemmi and zarr-particle-tools are regular dependencies, not extras.
+- **Twist:** the physical (deposited) twist, Z = (m - n twist / 360) / rise: MT -360/N, vimentin +73.73, actin about
+  -166.6.
+- **Outputs of `helix-polarity -o object:user/session`:**
+  - **filaments:** the recentred centre line as a Catmull-Rom curve, ordered minus -> plus when known, with
+    `polarity_known` for seeds and the analysis in `metadata["copick_helix"]`;
+  - **picks** (same name): one registration per segment, a lattice-registered particle with its full transform
+    (+Z towards the plus end);
+  - **work directory:** calls, summary, and `reference_<family>.mrc` (the fast average of the registration
+    particles, the initial model). Straightened volumes are kept only on request.
+- **`helix-picks`:** dense lattice-registered sampling from the stored results (every n-th dimer or subunit), with no
+  recomputation.
+- **Lattice gate:** pooled layer-line power against phase-scrambled decoys. A family whose lattice is not detected
+  gets no `polarity_known`.
+- **Validation:** synthetic round trips (microtubule and vimentin) check the roll, flip, shift and screw conventions,
+  each with a control that has to fail. On real 10521 microtubules the package reproduces the prototype calls
+  (54/54).
+- **Open:** registration continuity along a filament. Neighbouring microtubule segments can register to seam positions
+  that differ by a 13-fold near-symmetry. Measure it, then choose per segment the equivalent closest to its
+  neighbours.
+- **Status:** actin family pending its fork's report. Test refinements in ApexAgent (MT in
+  portal_avg/10521/microtubule; IF in portal_avg/10521/intermediate-filament) are running.
