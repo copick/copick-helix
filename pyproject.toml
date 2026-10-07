@@ -28,6 +28,7 @@ dev = ["pytest", "matplotlib"]
 [project.entry-points."copick.process.commands"]
 helix_straighten = "copick_helix.cli:straighten"
 helix_polarity = "copick_helix.cli:polarity"
+helix_picks = "copick_helix.cli:picks"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/copick_helix"]

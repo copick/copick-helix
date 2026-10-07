@@ -127,6 +127,64 @@ def lattice_gate(family: Family, filaments: dict[str, Straightened], params: pd.
     return {"terms": terms, "detected": bool(any(a > min_ratio * max(b, 1.0) for a, b in terms.values()))}
 
 
+def average_reference(family: Family, filaments: dict[str, Straightened], params: pd.DataFrame,
+                      res: iterative.IterativeResult, seeds: set | None = None) -> np.ndarray:
+    """Fast average of the registration particles (one per segment), extracted on each filament's reference grid in
+    the exported frame (+Z towards the plus end): an initial model consistent with the registration picks.
+    ``seeds``: restrict to these filaments."""
+    from .registration import Registration, extract, lattice_particles, local_frames
+
+    L = family.segment_length
+    screw = family.screw(family.reference_params)
+    acc, n = None, 0
+    for name, st in filaments.items():
+        if seeds is not None and name not in seeds:
+            continue
+        v, _, _ = family.to_reference_grid(st, {k: params.loc[name, k] for k in family.reference_params})
+        grid = local_frames(v.shape[0], st.step, v.shape[1])
+        half = (L / 2, family.in_plane_half_width * 0.8, family.in_plane_half_width * 0.8)
+        for row in res.segments[res.segments.filament == name].itertuples():
+            reg = Registration(row.segment, row.flip, row.roll_deg, row.shift_A, row.score)
+            pos, rots, _ = lattice_particles(grid, reg, L, 1.0, screw, family.plus_at_minus_z, centre_only=True)
+            sub = extract(v, st.step, np.zeros(3), pos[0], rots[0], half)
+            acc = sub if acc is None else acc + sub
+            n += 1
+    return acc / max(n, 1)
+
+
+def registration_particles(family: Family, filaments: dict[str, Straightened], params: pd.DataFrame,
+                           res: iterative.IterativeResult, every: int | None = None) -> dict:
+    """Per filament: (positions (n, 3) A, rotations (n, 3, 3), scores (n,), segment (n,)) in tomogram coordinates.
+    One particle per segment (the lattice point nearest its centre), or with ``every`` every n-th lattice point of
+    each segment (dense sampling for averaging)."""
+    from .registration import Registration, lattice_particles
+
+    screw = family.screw(family.reference_params)
+    out = {}
+    for name, st in filaments.items():
+        p = {k: params.loc[name, k] for k in family.reference_params}
+        factor = _axial_factor(family, p)
+        P, R, S, G = [], [], [], []
+        for row in res.segments[res.segments.filament == name].itertuples():
+            reg = Registration(row.segment, row.flip, row.roll_deg, row.shift_A, row.score)
+            pos, rots, _ = lattice_particles(st, reg, family.segment_length, factor, screw, family.plus_at_minus_z,
+                                             centre_only=every is None, every=every or 1)
+            P.append(pos)
+            R.append(rots)
+            S.append(np.full(len(pos), row.score))
+            G.append(np.full(len(pos), row.segment))
+        if P:
+            out[name] = (np.concatenate(P), np.concatenate(R), np.concatenate(S), np.concatenate(G))
+    return out
+
+
+def _axial_factor(family: Family, params: dict) -> float:
+    """original / reference axial scale of a filament (what to_reference_grid divided out)."""
+    ref = family.reference_params
+    key = "monomer_repeat" if "monomer_repeat" in ref else "rise"
+    return float(params[key]) / float(ref[key])
+
+
 def combine(mc: pd.DataFrame | None, it: iterative.IterativeResult | None, min_projection: float = 0.6) -> pd.DataFrame:
     """One row per filament: both calls, their agreement, and a seed flag (confident in both methods and agreeing)."""
     parts = []

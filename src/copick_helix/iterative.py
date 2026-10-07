@@ -252,4 +252,30 @@ def assign(g_by_filament: dict[str, np.ndarray], r, n_full, Z_full, cfg: Iterati
             seg_rows.append({"filament": name, "segment": j, "flip": bool(flip_f[f]), "k": int(k_), "l": int(l_),
                              "roll_deg": float(360.0 * k_ / sp.nphi), "shift_A": float(l_ * dz), "score": float(c)})
     return IterativeResult(pd.DataFrame(rows), pd.DataFrame(run_rows), G, strengths, pd.DataFrame(seg_rows),
-                           {"nphi": sp.nphi, "nz": sp.nz, "dz": dz})
+                           {"nphi": sp.nphi, "nz": sp.nz, "dz": dz, "keep_n": sp.keep_n, "keep_z": sp.keep_z, "r": r})
+
+
+def reference_volume(res: IterativeResult, n_inplane: int, flip_to_plus_up: bool) -> np.ndarray:
+    """The consensus reference as a real-space map vol[z, y, x] (step = the alignment grid's dz), the filament axis
+    at the in-plane centre. Only the family's Fourier support survives (lattice terms). With ``flip_to_plus_up`` the
+    map is turned 180 deg about x so its plus end points to +z (the exported particle frame)."""
+    from scipy.ndimage import map_coordinates
+
+    gd = res.grid
+    r, nphi, nz, dz = gd["r"], gd["nphi"], gd["nz"], gd["dz"]
+    full = np.zeros((len(r), nphi, nz), np.complex64)
+    full[:, gd["keep_n"][:, None], gd["keep_z"][None, :]] = res.reference
+    cyl = np.real(np.fft.ifft(np.fft.ifft(full, axis=1), axis=2)).astype(np.float32)  # rho(r, phi, z), up to scale
+    c = (np.arange(n_inplane) - n_inplane // 2) * dz
+    X, Y = np.meshgrid(c, c, indexing="xy")  # X along x (columns), Y along y (rows)
+    R, PHI = np.hypot(X, Y), np.mod(np.arctan2(Y, X), 2 * np.pi)
+    ri = (R - r[0]) / (r[1] - r[0])
+    pi = PHI / (2 * np.pi / nphi)
+    vol = np.empty((nz, n_inplane, n_inplane), np.float32)
+    inside = (ri >= 0) & (ri <= len(r) - 1)
+    for k in range(nz):
+        sl = np.concatenate([cyl[:, :, k], cyl[:, :1, k]], axis=1)  # wrap phi
+        vol[k] = np.where(inside, map_coordinates(sl, [ri, pi], order=1, mode="nearest"), 0.0)
+    if flip_to_plus_up:
+        vol = vol[::-1, ::-1, :].copy()
+    return vol

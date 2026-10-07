@@ -21,15 +21,32 @@ copick process helix-polarity -c config.json \
     -i "microtubule:baseline/v1" -t "wbp-filtered@10.0" \
     --family microtubule --tilt-range -45 63 \
     --work-dir helix_out/ -o "microtubule:helix/1"
+
+copick process helix-picks -c config.json -i "microtubule:helix/1" -o "microtubule:helix-picks/1" --every 1
 ```
 
-- `--family`: `microtubule` (13_3), `microtubule_N_S`.
-- Writes `helix_out/calls.tsv`, with one row per filament from each of the two methods.
-- With `-o`, writes the filaments reoriented to the polarity convention: minus -> plus for microtubules. Each carries
-  `polarity_known: true` when it is a seed (confident in both methods, and they agree). The call and confidence go
-  into the filament metadata under `copick_helix`.
-- Use CTF-corrected tomograms: the polarity signal sits at 20-40 A, where the first CTF zero usually lies.
-- `copick process helix-straighten` only straightens and recentres, caching the result in the work directory.
+`helix-polarity` straightens and recentres each filament and measures its helical parameters. It runs both polarity
+methods and registers every segment to a reference built from the data. With `-o object:user/session` it writes:
+
+- **filaments**: the recentred centre lines as Catmull-Rom curves, visible in every copick viewer. Each is ordered
+  minus -> plus when the polarity is known, and carries `polarity_known` for seeds (confident in both methods,
+  methods agreeing, lattice detected). The calls, confidences, helical parameters and lattice gate go under
+  `metadata["copick_helix"]`.
+- **picks** (same name): one registration per segment, placed at a lattice point. The full transform maps a reference
+  frame with +Z towards the plus end onto the tomogram; `instance_id` is the filament ID.
+
+In WORK_DIR it writes:
+- `calls.tsv` and `summary.json`;
+- `reference_<family>.mrc`, the fast average of the registration particles in the same frame (an initial model);
+- with `--keep-volumes`, the straightened volumes.
+
+`helix-picks` samples every n-th lattice point along each filament from those stored results, with no recomputation.
+Every particle sits on the same lattice position and in the same frame, so a refinement can start from local
+searches. `helix-polarity --picks URI --every n` writes the same dense picks directly from the analysis.
+
+`--family`: `microtubule` (13_3), `microtubule_N_S`, `intermediate_filament` (vimentin, 8RVE; needs the lattice
+gate). Actin is in progress. Use CTF-corrected tomograms: the polarity signal sits at 20-40 A, where the first CTF zero
+usually lies.
 
 ## Methods
 

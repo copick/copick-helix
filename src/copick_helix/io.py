@@ -1,10 +1,11 @@
 """copick in and out.
 
 Reading: filament traces (``object:user/session``), tomograms (voxel spacing, type).
-Writing: oriented filaments in a new session. With ``polarity_known`` the point order follows the polarity, using the
-convention recorded in each filament's metadata (``copick_helix.polarity_convention``): minus -> plus for
-microtubules, pointed -> barbed for actin. Every filament also carries the method, call and confidence measures under
-``metadata["copick_helix"]``.
+Writing:
+- filaments: the recentred centre lines as Catmull-Rom curves, ordered minus -> plus (pointed -> barbed) when the
+  polarity is known, with the analysis under ``metadata["copick_helix"]``;
+- picks: lattice-registered particles with full transforms (+Z towards the plus end), one per segment (the
+  registration) or dense (for averaging).
 """
 
 from __future__ import annotations
@@ -12,7 +13,6 @@ from __future__ import annotations
 import numpy as np
 import zarr
 
-CONVENTION = {"microtubule": "minus_to_plus", "actin": "pointed_to_barbed"}
 
 
 def open_project(config: str):
@@ -36,28 +36,42 @@ def read_tomogram(root, run_name: str, voxel_spacing: float, tomo_type: str, lev
     return np.asarray(zarr.open(tomo.zarr(), mode="r")[level][:], dtype=np.float32)
 
 
-def write_oriented(root, run_name: str, object_name: str, user_id: str, session_id: str, filaments: list[dict],
-                   family_kind: str):
-    """Write filaments with their points reoriented to the polarity convention.
+def write_centrelines(root, run_name: str, object_name: str, user_id: str, session_id: str, items: list[dict],
+                      control_spacing: float = 100.0, step: float = 10.0):
+    """Filaments as Catmull-Rom curves through the recentred centre line (control points every ``control_spacing``
+    A, points regenerated every ``step`` A), so every copick viewer shows the line the analysis used.
 
-    Each item: {"source": CopickFilament, "first_is_plus": bool | None, "known": bool, "info": dict}.
-    ``first_is_plus`` True means the plus (barbed) end is at the trace's first point; the points are reversed so the
-    order runs minus -> plus (pointed -> barbed). ``known`` sets ``polarity_known`` (confident calls only)."""
+    Each item: {"instance_id", "centres" (n, 3) A along the analysis direction, "reverse" (order minus -> plus),
+    "known" (polarity_known), "radius", "metadata"}."""
     from copick.models import CopickFilament
 
     run = root.get_run(run_name)
     out = run.new_filaments(object_name, session_id, user_id, exist_ok=True)
-    new = []
-    for item in filaments:
-        f = item["source"]
-        pts = np.asarray(f.points, float)
-        if item["first_is_plus"]:
-            pts = pts[::-1]
-        meta = dict(f.metadata or {})
-        meta["copick_helix"] = {**item.get("info", {}), "polarity_convention": CONVENTION.get(family_kind),
-                                "reoriented": bool(item["first_is_plus"])}
-        new.append(CopickFilament(instance_id=f.instance_id, points=[tuple(p) for p in pts],
-                                  polarity_known=bool(item["known"]), score=f.score, radius=f.radius, metadata=meta))
-    out.filaments = new
+    fils = []
+    for it in items:
+        c = np.asarray(it["centres"], float)
+        if it["reverse"]:
+            c = c[::-1]
+        seg = np.r_[0, np.cumsum(np.linalg.norm(np.diff(c, axis=0), axis=1))]
+        marks = np.unique(np.r_[np.arange(0, seg[-1], control_spacing), seg[-1]])
+        ctrl = np.stack([np.interp(marks, seg, c[:, d]) for d in range(3)], 1)
+        fils.append(CopickFilament.from_control_points(int(it["instance_id"]), ctrl.tolist(), step=step,
+                                                       kind="catmull-rom", alpha=0.5, polarity_known=bool(it["known"]),
+                                                       radius=it.get("radius"), metadata=it.get("metadata", {})))
+    out.filaments = fils
     out.store()
     return out
+
+
+def write_particles(root, run_name: str, object_name: str, user_id: str, session_id: str, positions, rotations,
+                    instance_ids, scores):
+    """copick picks with full transforms (rotation maps the particle's reference frame onto the tomogram; +Z towards
+    the plus end), instance_id = filament ID."""
+    run = root.get_run(run_name)
+    picks = run.new_picks(object_name, session_id, user_id, exist_ok=True)
+    T = np.tile(np.eye(4), (len(positions), 1, 1))
+    T[:, :3, :3] = rotations
+    picks.from_numpy(np.asarray(positions, float), T, instance_ids=np.asarray(instance_ids, int),
+                     scores=np.asarray(scores, float))
+    picks.store()
+    return picks

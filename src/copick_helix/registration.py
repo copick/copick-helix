@@ -103,3 +103,15 @@ def extract(vol: np.ndarray, step: float, origin: np.ndarray, pos: np.ndarray, R
     idx = np.stack([X[..., 2], X[..., 1], X[..., 0]], 0) / step
     sub = map_coordinates(vol, idx.reshape(3, -1), order=1, mode="constant").reshape(Q.shape[:3])
     return np.transpose(sub, (2, 1, 0)).astype(np.float32)
+
+
+def local_frames(n_s: int, step: float, n_inplane: int):
+    """A Straightened-like object with identity frames for a volume on the straightened / reference grid: tomogram
+    coordinates equal grid coordinates (x = e1, y = e2, z = s; axis at the in-plane centre index)."""
+    from types import SimpleNamespace
+
+    c = np.stack([np.full(n_s, (n_inplane // 2) * step), np.full(n_s, (n_inplane // 2) * step),
+                  np.arange(n_s) * step], 1)
+    eye = np.eye(3)
+    return SimpleNamespace(centres=c, step=step, t=np.tile(eye[2], (n_s, 1)), e1=np.tile(eye[0], (n_s, 1)),
+                           e2=np.tile(eye[1], (n_s, 1)))
