@@ -23,8 +23,8 @@ changes. Per segment, D = S(as is) - S(flipped) against the final leave-one-out 
 consistency, odd / even halves and z score.
 
 Everything is repeated on phase-scrambled decoys of the same segments. The decoys' statistics are the false-positive
-baseline: polarity counts as detected only when the data's halves agreement beats the decoys'. The family's model only
-names the consensus orientation (plus / minus).
+baseline: polarity counts as detected only when the data beat the decoys, in odd / even halves agreement or in the
+number of confident filaments. The family's model only names the consensus orientation (plus / minus).
 """
 
 from __future__ import annotations
@@ -569,8 +569,13 @@ def analyse(segments: dict, family, cfg: TermConfig | None = None, workers: int 
         diff = h_d / max(n_d, 1) - h_q / max(n_q, 1)
         lat = summary["enrichment"]["lo"]
         summary["lattice_detected"] = bool(lat["data"] > 1.25 * lat["decoy"])
-        summary["polarity_detected"] = bool(summary["lattice_detected"] and diff > 2 * se)
+        # two tests against the decoys: odd / even halves agreeing more often, or more confident filaments (z >=
+        # z_seed; counts compared as Poisson); either one carries the detection
+        z_d, z_q = summary["data"]["z_ge_seed"], summary["decoy"]["z_ge_seed"]
+        z_ok = (z_d - z_q) > 2 * np.sqrt(max(z_d + z_q, 1))
+        summary["polarity_detected"] = bool(summary["lattice_detected"] and (diff > 2 * se or z_ok))
         summary["halves_excess"] = {"diff": float(diff), "se": float(se)}
+        summary["confident_excess"] = {"data": z_d, "decoy": z_q, "two_sigma": float(2 * np.sqrt(max(z_d + z_q, 1)))}
         if label:  # diagnostic only: the same statistics from the model-reference score
             summary["model_reference"] = {"data": _dataset_stats(mstats, cfg), "decoy": _dataset_stats(dmstats, cfg)}
     else:

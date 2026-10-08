@@ -83,7 +83,8 @@ segments). `polarity_known` is set only where polarity is detected over the deco
    per segment on the 300-40 A band. The dataset's axial scale is fitted from the low-band layer lines. A data-built,
    leave-one-filament-out reference from random polarity starts aligns every segment (rotation, shift over one rise)
    and calls each filament. The halves, z scores and bundle-pair agreement are compared against the same pipeline on
-   phase-scrambled decoys; polarity counts as detected only when the halves agreement beats the decoys'. On the
+   phase-scrambled decoys; polarity counts as detected only when the data beat the decoys in halves agreement or in
+   the number of confident filaments. On the
    tilt-series segments of EMPIAR-10521 (182 actin filaments) the halves agree for 105/135 filaments against 60/135
    for decoys, and side-by-side bundle neighbours share polarity in 147/177 pairs against 93/177.
 
