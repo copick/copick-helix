@@ -539,11 +539,9 @@ def _write_copick(
     seeds_only,
     lattice_detected,
     ref_path,
-    lines: dict | None = None,
 ):
     """Center-line filaments (ordered minus -> plus when known; analysis in metadata), registration picks under the
-    same URI, and optional dense picks. ``lines``: name -> center line to write instead of the straightened one (the
-    term route's refined axis)."""
+    same URI, and optional dense picks."""
     rows = table.set_index("filament")
     by_run: dict = {}
     for name, st in fils.items():
@@ -567,7 +565,7 @@ def _write_copick(
                 items.append(
                     {
                         "instance_id": fils[name].meta["instance_id"],
-                        "centers": lines[name] if lines and name in lines else fils[name].centers,
+                        "centers": fils[name].centers,
                         "reverse": call
                         == "plus",  # 'plus': plus end at the first trace point -> reverse to minus -> plus
                         "known": seed and call in ("plus", "minus"),
@@ -640,7 +638,7 @@ def _polarity_terms(
     """The term route (actin; any family with a term model): segments from the tilt series or the straightened
     tomograms, band-limited terms, data-built reference, decoys."""
     from . import bands, tiltseries
-    from .pipeline import term_average, term_center_lines, term_registration_particles, term_segments
+    from .pipeline import term_average, term_registration_particles, term_segments
 
     L = family.term_segment_length
     if source == "tiltseries":
@@ -734,7 +732,6 @@ def _polarity_terms(
         seeds_only,
         s.get("lattice_detected"),
         ref_path,
-        lines=term_center_lines(fils, res, L),
     )
 
 
