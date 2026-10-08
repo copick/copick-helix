@@ -10,7 +10,8 @@ the filament's own axial screw step, d = +-1 so that +j follows the pick's +Z) w
 
 B(s) the rotation-minimising frame along the stored centre line (only its transport between s_k and s_j matters) and
 (P, omega) the family's screw (the exported frame is invariant under it as well). Each registration pick covers the
-part of the filament nearer to it than to its neighbours, at most half a segment either side of it.
+part of the filament nearer to it than to its neighbours, at most half a segment either side of it, and carries its
+offset from the centre line (the term route refines the axis per segment) along with the frame.
 """
 
 from __future__ import annotations
@@ -51,7 +52,10 @@ def dense_from_registration(points, metadata: dict, reg_positions, reg_rotations
     sk, Rk = sk[order], np.asarray(reg_rotations)[order]
     # each registration covers the stretch nearer to it than to its neighbours, at most half a segment either side
     # (what its segment registered); filament tails outside every analysed segment are not sampled
-    half = 0.5 * family.segment_length * params[key] / family.reference_params[key]
+    if "segment_length_A" in info["analysis"]:  # term route: segments measured in the data's own units
+        half = 0.5 * float(info["analysis"]["segment_length_A"])
+    else:
+        half = 0.5 * family.segment_length * params[key] / family.reference_params[key]
     bounds = np.r_[max(s[0], sk[0] - half), 0.5 * (sk[1:] + sk[:-1]), min(s[-1], sk[-1] + half)]
     pos, rots = [], []
     for k in range(len(sk)):
@@ -61,6 +65,7 @@ def dense_from_registration(points, metadata: dict, reg_positions, reg_rotations
         lo, hi = (bounds[k] - sk[k]) / P_s, (bounds[k + 1] - sk[k]) / P_s  # range of j * d
         j_lo, j_hi = (int(np.ceil(lo)), int(np.floor(hi))) if d > 0 else (int(np.ceil(-hi)), int(np.floor(-lo)))
         Bk = _nearest_frame(B, s, sk[k])
+        off_k = np.asarray(reg_positions)[order][k] - _at(sk[k], s, p)  # registered axis offset from the centre line
         for j in range(j_lo, j_hi + 1):
             if j % every:
                 continue
@@ -68,7 +73,7 @@ def dense_from_registration(points, metadata: dict, reg_positions, reg_rotations
             if sj < s[0] or sj > s[-1]:
                 continue
             Bj = _nearest_frame(B, s, sj)
-            pos.append(_at(sj, s, p))
+            pos.append(_at(sj, s, p) + Bj @ Bk.T @ off_k)
             rots.append(Bj @ Bk.T @ Rk[k] @ rz(j * omega))
     return np.array(pos), np.array(rots)
 
