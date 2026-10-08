@@ -33,39 +33,62 @@ def _tomo_uri(uri: str):
     return tomo_type, float(vs)
 
 
-def _straighten_all(config, run_names, input_uri, tomogram, family, tilt_range, tilt_axis, min_length, work_dir,
-                    keep_volumes):
-    """Straighten every filament of the input set; cached in WORK_DIR/straightened only with ``keep_volumes``."""
+def _straighten_run(args):
+    """Straighten the filaments of one run (a worker: opens the project and the run's tomogram itself)."""
+    config, run, input_uri, tomogram, family_name, geom, min_length, sdir, keep_volumes = args
     root = io.open_project(config)
+    family = get_family(family_name)
     obj, user, session = _filament_uri(input_uri)
     tomo_type, vs = _tomo_uri(tomogram)
+    fils = io.read_filaments(root, run, obj, user, session)
+    fils = [f for f in fils if np.linalg.norm(np.diff(f[1], axis=0), axis=1).sum() >= min_length]
+    out = {}
+    tomo = None
+    for iid, pts, _ in fils:
+        stem = os.path.join(sdir, f"{run}_f{iid}")
+        if keep_volumes and os.path.exists(stem + ".json"):
+            out[f"{run}_f{iid}"] = Straightened.load(stem)
+            continue
+        if tomo is None:
+            tomo = io.read_tomogram(root, run, vs, tomo_type)
+            tomo = (tomo - tomo.mean()) / tomo.std()
+        st = straighten_one(pts, tomo, vs, family, geom, normalise=False, window=family.recentre_window,
+                            lim_A=family.recentre_max_shift)
+        st.meta.update({"run": run, "instance_id": int(iid), "source": input_uri, "tomogram": tomogram})
+        if keep_volumes:
+            st.save(stem)
+        out[f"{run}_f{iid}"] = st
+    return run, len(fils), out
+
+
+def _straighten_all(config, run_names, input_uri, tomogram, family, tilt_range, tilt_axis, min_length, work_dir,
+                    keep_volumes, workers: int = 1):
+    """Straighten every filament of the input set, one run per worker; cached in WORK_DIR/straightened only with
+    ``keep_volumes``."""
+    root = io.open_project(config)
     geom = TiltGeometry(tilt_axis=(0.0, 1.0, 0.0) if tilt_axis == "y" else (1.0, 0.0, 0.0), tilt_range=tuple(tilt_range))
     runs = list(run_names) if run_names else [r.name for r in root.runs]
-    out = {}
     sdir = os.path.join(work_dir, "straightened")
     if keep_volumes:
         os.makedirs(sdir, exist_ok=True)
-    for run in runs:
-        fils = io.read_filaments(root, run, obj, user, session)
-        fils = [f for f in fils if np.linalg.norm(np.diff(f[1], axis=0), axis=1).sum() >= min_length]
-        if not fils:
-            continue
-        tomo = None
-        for iid, pts, _ in fils:
-            stem = os.path.join(sdir, f"{run}_f{iid}")
-            if keep_volumes and os.path.exists(stem + ".json"):
-                out[f"{run}_f{iid}"] = Straightened.load(stem)
-                continue
-            if tomo is None:
-                tomo = io.read_tomogram(root, run, vs, tomo_type)
-                tomo = (tomo - tomo.mean()) / tomo.std()
-            st = straighten_one(pts, tomo, vs, family, geom, normalise=False, window=family.recentre_window,
-                                lim_A=family.recentre_max_shift)
-            st.meta.update({"run": run, "instance_id": int(iid), "source": input_uri, "tomogram": tomogram})
-            if keep_volumes:
-                st.save(stem)
-            out[f"{run}_f{iid}"] = st
-        click.echo(f"{run}: {len(fils)} filaments")
+    jobs = [(config, run, input_uri, tomogram, family.name, geom, min_length, sdir, keep_volumes) for run in runs]
+    out = {}
+    if workers > 1:
+        import multiprocessing as mp
+        from concurrent.futures import ProcessPoolExecutor
+
+        with ProcessPoolExecutor(workers, mp_context=mp.get_context("spawn")) as ex:
+            results = ex.map(_straighten_run, jobs)
+            for run, n, fils in results:
+                out.update(fils)
+                if n:
+                    click.echo(f"{run}: {n} filaments")
+    else:
+        for job in jobs:
+            run, n, fils = _straighten_run(job)
+            out.update(fils)
+            if n:
+                click.echo(f"{run}: {n} filaments")
     return root, out
 
 
@@ -142,7 +165,7 @@ def polarity(config, run_names, input_uri, tomogram, family_name, tilt_range, ti
     terms = route == "terms" or (route == "auto" and family.route == "terms")
     root, fils = _straighten_all(config, run_names, input_uri, tomogram, family, tilt_range, tilt_axis,
                                  min_length or 2 * (family.term_segment_length if terms else family.segment_length),
-                                 work_dir, keep_volumes)
+                                 work_dir, keep_volumes, workers=workers)
     if terms:
         return _polarity_terms(root, fils, family, work_dir, label, output_uri, picks_uri, every, seeds_only, tomogram,
                                source, tomograms_star, tiltseries_dir, binning, size_unit_A, snr, workers)
