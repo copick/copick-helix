@@ -3,7 +3,7 @@
 Each segment becomes g(r, n, Z) (symmetric measured-region mask, band limits, cylindrical resampling), restricted to
 the family's Fourier support (its layer lines and allowed orders). Restricting to the support is what makes a
 self-built reference converge from random starts: outside it the data hold only missing-wedge leakage (fixed to
-the beam, not the lattice) and off-centring leakage, which a reference otherwise locks onto.
+the beam, not the lattice) and off-centering leakage, which a reference otherwise locks onto.
 
 Alignment of a segment to a reference G is one inverse FFT over (n, Z) for rotation about and shift along the axis;
 a polarity flip is conj(g). Polarity is a per-filament variable; rotation and shift are per segment. The reference is
@@ -49,7 +49,7 @@ def segment_g(seg: np.ndarray, geom: SegmentGeometry, step: float, cfg: Iterativ
     m = measured_mask_3d(seg.shape, step, geom.beam, geom.tilt_axis, cfg.half_wedge, cfg.lp, cfg.hp)
     v = np.fft.irfftn(np.fft.rfftn(seg) * m, s=seg.shape).astype(np.float32)
     c = seg.shape[1] // 2
-    r, _, cyl = cylindrical(v, step, cfg.rmin, cfg.rmax, cfg.dr, cfg.nphi, centre=(c, c))
+    r, _, cyl = cylindrical(v, step, cfg.rmin, cfg.rmax, cfg.dr, cfg.nphi, center=(c, c))
     n, Z, g = bessel_coefficients(cyl, step)
     return r, n, Z, g
 
@@ -172,7 +172,7 @@ class IterativeResult:
 def assign(g_by_filament: dict[str, np.ndarray], r, n_full, Z_full, cfg: IterativeConfig,
            model_plus_g: np.ndarray | None = None, rng_seed: int = 7, bootstrap_draws: int = 2000,
            strength_draws: int = 8) -> IterativeResult:
-    """Run all starts and summarise. g_by_filament: name -> full g of its segments (S, R, n, Z), one segment length.
+    """Run all starts and summarize. g_by_filament: name -> full g of its segments (S, R, n, Z), one segment length.
     model_plus_g: optional full g of a model in the 'plus' orientation, used only to orient the final global sign.
     strength_draws: reruns with fixed random polarities, the baseline for the reference's polarity strength (0 skips
     it, e.g. when only the registration is wanted)."""
@@ -262,7 +262,7 @@ def assign(g_by_filament: dict[str, np.ndarray], r, n_full, Z_full, cfg: Iterati
 
 def reference_volume(res: IterativeResult, n_inplane: int, flip_to_plus_up: bool) -> np.ndarray:
     """The consensus reference as a real-space map vol[z, y, x] (step = the alignment grid's dz), the filament axis
-    at the in-plane centre. Only the family's Fourier support survives (lattice terms). With ``flip_to_plus_up`` the
+    at the in-plane center. Only the family's Fourier support survives (lattice terms). With ``flip_to_plus_up`` the
     map is turned 180 deg about x so its plus end points to +z (the exported particle frame)."""
     from scipy.ndimage import map_coordinates
 

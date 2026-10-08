@@ -30,22 +30,22 @@ copick process helix-polarity -c config.json \
     --source tiltseries --tomograms-star relion_project/Import/job001/tomograms.star --bin 3 --workers 8 \
     --work-dir helix_actin/ -o "actin:helix/1"
 
-# intermediate filaments: recentring only (no lattice or polarity)
-copick process helix-recentre -c config.json \
+# intermediate filaments: recentering only (no lattice or polarity)
+copick process helix-recenter -c config.json \
     -i "intermediate-filament:baseline/v1" -t "wbp-filtered@10.0" --family intermediate_filament \
-    --tilt-range -45 63 --work-dir helix_if/ -o "intermediate-filament:recentred/1" \
-    --picks "intermediate-filament:recentred/1" --spacing 85
+    --tilt-range -45 63 --work-dir helix_if/ -o "intermediate-filament:recentered/1" \
+    --picks "intermediate-filament:recentered/1" --spacing 85
 ```
 
-`helix-recentre` recentres each trace on its density (the family's cross-section profile) and writes the recentred
-centre lines as filaments, with no lattice or polarity analysis. With `--picks`, it also writes evenly spaced picks
+`helix-recenter` recenters each trace on its density (the family's cross-section profile) and writes the recentered
+center lines as filaments, with no lattice or polarity analysis. With `--picks`, it also writes evenly spaced picks
 oriented along the line: +Z follows the trace direction, which is not a polarity, and the rotation about the axis is
 arbitrary but continuous.
 
-`helix-polarity` straightens and recentres each filament and measures its helical parameters. It runs both polarity
+`helix-polarity` straightens and recenters each filament and measures its helical parameters. It runs both polarity
 methods and registers every segment to a reference built from the data. With `-o object:user/session` it writes:
 
-- **filaments**: the recentred centre lines as Catmull-Rom curves, visible in every copick viewer. Each is ordered
+- **filaments**: the recentered center lines as Catmull-Rom curves, visible in every copick viewer. Each is ordered
   minus -> plus when the polarity is known, and carries `polarity_known` for seeds (confident in both methods,
   methods agreeing, lattice detected). The calls, confidences, helical parameters and lattice gate go under
   `metadata["copick_helix"]`.
@@ -62,8 +62,8 @@ Every particle sits on the same lattice position and in the same frame, so a ref
 searches. `helix-polarity --picks URI --every n` writes the same dense picks directly from the analysis.
 
 `--family`: `microtubule` (13_3), `microtubule_N_S`, `actin` (6DJO; plus = barbed end), `intermediate_filament`
-(vimentin, 8RVE; recentring only, since no IF lattice was detectable in cellular data. `helix-polarity` with it runs
-`helix-recentre`.) Use CTF-corrected tomograms for microtubules: the polarity signal sits at
+(vimentin, 8RVE; recentering only, since no IF lattice was detectable in cellular data. `helix-polarity` with it runs
+`helix-recenter`.) Use CTF-corrected tomograms for microtubules: the polarity signal sits at
 20-40 A, where the first CTF zero usually lies.
 
 **Actin** (and any family with an atomic model, via `--route terms`) uses the term route. A deconvolved 10 A tomogram
@@ -76,7 +76,7 @@ segments). `polarity_known` is set only where polarity is detected over the deco
 
 ## Methods
 
-1. **Straightening and recentring.** Rotation-minimising frames along the trace. Windows of the cross-section are
+1. **Straightening and recentering.** Rotation-minimizing frames along the trace. Windows of the cross-section are
    matched to the family's radial profile (a ring for microtubules) inside the measured Fourier directions.
 2. **Per-filament parameters.** The microtubule monomer repeat comes from the 4 nm layer line; the protofilament
    number from the equator.
@@ -98,7 +98,7 @@ segments). `polarity_known` is set only where polarity is detected over the deco
    phase-scrambled decoys; polarity counts as detected only when the data beat the decoys in halves agreement or in
    the number of confident filaments. On the
    tilt-series segments of EMPIAR-10521 (182 actin filaments) the halves agree for 105/135 filaments against 60/135
-   for decoys, and side-by-side bundle neighbours share polarity in 147/177 pairs against 93/177.
+   for decoys, and side-by-side bundle neighbors share polarity in 147/177 pairs against 93/177.
 
 ## Dependencies
 

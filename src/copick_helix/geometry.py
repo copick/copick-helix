@@ -1,14 +1,14 @@
-"""Straightening and recentring of a traced filament.
+"""Straightening and recentering of a traced filament.
 
 The trace is resampled at 10 A, smoothed (Gaussian, sigma 40 A) and evaluated every ``step`` A with a cubic spline.
-Frames are rotation-minimising (double reflection): t = unit tangent, e1 starts as the beam projected onto the
+Frames are rotation-minimizing (double reflection): t = unit tangent, e1 starts as the beam projected onto the
 normal plane, e2 = t x e1. The tomogram is sampled on c(s) + u e2 + v e1 (u, v within +-half width), giving
 ``vol[s, u, v]`` = (z, y, x) of a right-handed volume with x = e1, y = e2, z = t. +s runs from the first to the last
 trace point.
 
-Recentring: in windows along s, the mean cross-section is correlated with the family's radial template (a ring for
+Recentering: in windows along s, the mean cross-section is correlated with the family's radial template (a ring for
 microtubules, a rod for actin), using only the cross-section Fourier directions the tilt series sampled; the
-offsets are smoothed along s, applied to the centre line, and the volume is resampled (twice by default).
+offsets are smoothed along s, applied to the center line, and the volume is resampled (twice by default).
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ def resample(p: np.ndarray, step: float) -> np.ndarray:
 
 
 def curve(points, step: float, sigma: float = 40.0):
-    """Smoothed centre line every ``step`` A and unit tangents."""
+    """Smoothed center line every ``step`` A and unit tangents."""
     p = resample(np.asarray(points, float), 10.0)
     p = ndi.gaussian_filter1d(p, sigma / 10.0, axis=0, mode="nearest")
     s = np.r_[0, np.cumsum(np.linalg.norm(np.diff(p, axis=0), axis=1))]
@@ -64,7 +64,7 @@ def curve(points, step: float, sigma: float = 40.0):
 
 
 def frames(c, t, beam):
-    """Rotation-minimising frames (double reflection); e1 starts as the beam projected on the normal plane."""
+    """Rotation-minimizing frames (double reflection); e1 starts as the beam projected on the normal plane."""
     beam = np.asarray(beam, float)
     e1 = np.empty_like(c)
     r = beam - np.dot(beam, t[0]) * t[0]
@@ -100,7 +100,7 @@ def sample(tomo: np.ndarray, voxel: float, c, e1, e2, coord, chunk: int = 64) ->
 class Straightened:
     vol: np.ndarray  # (s, e2, e1), protein positive
     step: float
-    centres: np.ndarray
+    centers: np.ndarray
     t: np.ndarray
     e1: np.ndarray
     e2: np.ndarray
@@ -109,12 +109,12 @@ class Straightened:
     protein_sign: float
     eq_coverage_deg: float
     geometry: TiltGeometry
-    recentring: list = field(default_factory=list)
+    recentering: list = field(default_factory=list)
     meta: dict = field(default_factory=dict)
 
     @property
     def length(self) -> float:
-        return (len(self.centres) - 1) * self.step
+        return (len(self.centers) - 1) * self.step
 
     def segments(self, length: float):
         """(k, slice) of non-overlapping segments of ``length`` A."""
@@ -131,7 +131,7 @@ class Straightened:
     def load(cls, stem: str) -> "Straightened":
         d = json.load(open(stem + ".json"))
         d["geometry"] = TiltGeometry(**d["geometry"])
-        for k in ("centres", "t", "e1", "e2", "beam_local", "tilt_local"):
+        for k in ("centers", "t", "e1", "e2", "beam_local", "tilt_local"):
             d[k] = np.asarray(d[k])
         return cls(vol=np.load(stem + ".npy"), **d)
 
@@ -168,10 +168,10 @@ def equatorial_coverage(t, geom: TiltGeometry) -> float:
     return float(np.median(cov))
 
 
-class Recentrer:
+class Recenterer:
     def __init__(self, family: Family, step: float, coord: np.ndarray, lowpass_res: float = 30.0):
         R = np.hypot(*np.meshgrid(coord, coord, indexing="ij"))
-        tpl = family.recentre_profile(R)
+        tpl = family.recenter_profile(R)
         tpl = tpl - tpl.mean()
         self.tpl_f = np.conj(np.fft.fft2(np.fft.ifftshift(tpl)))
         kf = np.fft.fftfreq(len(coord), step)
@@ -180,7 +180,7 @@ class Recentrer:
         self.step, self.n = step, len(coord)
 
     def offset(self, x, mask, lim_A: float):
-        """(du along e2, dv along e1) A of the template centre in the mean cross-section x (protein positive)."""
+        """(du along e2, dv along e1) A of the template center in the mean cross-section x (protein positive)."""
         x = np.where(np.isfinite(x), x, np.nanmean(x))
         x = x - x.mean()
         cc = np.real(np.fft.ifft2(np.fft.fft2(x) * self.tpl_f * mask * self.lowpass))
@@ -209,13 +209,13 @@ def protein_sign(vol, coord, band) -> float:
 
 def straighten(points, tomo: np.ndarray, voxel: float, family: Family, geom: TiltGeometry, step: float = 5.0,
                iterations: int = 2, window: float = 300.0, smooth: float = 300.0, lim_A: float = 100.0,
-               normalise: bool = True) -> Straightened:
-    """Straighten and recentre one filament (points in A, tomogram coordinates; tomo[z, y, x] with voxel size)."""
-    if normalise:
+               normalize: bool = True) -> Straightened:
+    """Straighten and recenter one filament (points in A, tomogram coordinates; tomo[z, y, x] with voxel size)."""
+    if normalize:
         tomo = (tomo - float(tomo.mean())) / float(tomo.std())
     half = family.in_plane_half_width
     coord = (np.arange(int(round(2 * half / step)) + 1) - int(round(half / step))) * step
-    rec = Recentrer(family, step, coord)
+    rec = Recenterer(family, step, coord)
     beam = np.asarray(geom.beam, float)
     c, t = curve(points, step)
     e1, e2 = frames(c, t, beam)
@@ -248,7 +248,7 @@ def straighten(points, tomo: np.ndarray, voxel: float, family: Family, geom: Til
         return np.stack([e1 @ v, e2 @ v, t @ v], 1)
 
     vol = np.nan_to_num(sign * sv)
-    return Straightened(vol=vol.astype(np.float32), step=step, centres=c, t=t, e1=e1, e2=e2,
+    return Straightened(vol=vol.astype(np.float32), step=step, centers=c, t=t, e1=e1, e2=e2,
                         beam_local=local(geom.beam), tilt_local=local(geom.tilt_axis), protein_sign=sign,
-                        eq_coverage_deg=equatorial_coverage(t, geom), geometry=geom, recentring=history,
+                        eq_coverage_deg=equatorial_coverage(t, geom), geometry=geom, recentering=history,
                         meta={"nan_fraction": float(np.mean(~np.isfinite(sv)))})

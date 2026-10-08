@@ -6,7 +6,7 @@ therefore sits in the segment's straightened frame at
 
     y = F_p Rz(-roll) (x - shift z^) (+ L z^ if flip),   F_p = diag(1, -1, -1) if flip else 1,
 
-because the flip (complex conjugation in Bessel space) reflects z about the segment centre once unwrapped.
+because the flip (complex conjugation in Bessel space) reflects z about the segment center once unwrapped.
 
 and a particle whose reference frame maps onto the tomogram by the rotation A (RELION / copick convention:
 tomogram vector = A reference vector) has A = [e1 e2 t] F_p Rz(-roll).
@@ -44,10 +44,10 @@ class Registration:
 
 
 def lattice_particles(st, reg: Registration, segment_length: float, factor: float, screw: tuple[float, float],
-                      plus_at_minus_z: bool, z0: float | None = None, every: int = 1, centre_only: bool = False):
+                      plus_at_minus_z: bool, z0: float | None = None, every: int = 1, center_only: bool = False):
     """Lattice-registered particles of one segment.
 
-    st: Straightened filament (centres, t, e1, e2 at ``st.step``); factor: original / reference axial scale (the
+    st: Straightened filament (centers, t, e1, e2 at ``st.step``); factor: original / reference axial scale (the
     segment was stretched by 1/factor onto the reference grid); screw: (P A on the reference grid, omega deg).
     Returns positions (n, 3) in tomogram A, rotations (n, 3, 3) mapping the exported reference frame to the tomogram,
     and arc lengths (n,) in A along ``st``."""
@@ -61,26 +61,26 @@ def lattice_particles(st, reg: Registration, segment_length: float, factor: floa
     # nearest equivalent in (-L/2, L/2] and place lattice points without wrapping
     shift = (reg.shift_A + L / 2) % L - L / 2
     js = np.arange(-int(np.ceil(2 * L / P)) - 2, int(np.ceil(2 * L / P)) + 3)
-    # flip = complex conjugation in Bessel space = z -> -z modulo L, i.e. a reflection about the segment centre once
+    # flip = complex conjugation in Bessel space = z -> -z modulo L, i.e. a reflection about the segment center once
     # unwrapped (z -> L - z), not about its start
     u = sign * (z0 + js * P - shift) + (L if reg.flip else 0.0)  # position within the segment (reference grid)
     inside = (u >= 0) & (u < L)
     js, u = js[inside], u[inside]
     order = np.argsort(u)
     js, u = js[order], u[order]
-    if centre_only:
+    if center_only:
         i = int(np.argmin(np.abs(u - L / 2)))
         js, u = js[i:i + 1], u[i:i + 1]
     elif every > 1:
         js, u = js[::every], u[::every]
     s_ref = reg.segment * L + u
     s = s_ref * factor  # arc length along the original straightened filament
-    n_s = len(st.centres)
+    n_s = len(st.centers)
     idx = np.clip(s / st.step, 0, n_s - 1)
     i0 = np.floor(idx).astype(int)
     i1 = np.minimum(i0 + 1, n_s - 1)
     w = (idx - i0)[:, None]
-    pos = (1 - w) * st.centres[i0] + w * st.centres[i1]
+    pos = (1 - w) * st.centers[i0] + w * st.centers[i1]
     rots = []
     for k, j in enumerate(js):
         i = int(round(idx[k]))
@@ -107,26 +107,26 @@ def extract(vol: np.ndarray, step: float, origin: np.ndarray, pos: np.ndarray, R
 
 def local_frames(n_s: int, step: float, n_inplane: int):
     """A Straightened-like object with identity frames for a volume on the straightened / reference grid: tomogram
-    coordinates equal grid coordinates (x = e1, y = e2, z = s; axis at the in-plane centre index)."""
+    coordinates equal grid coordinates (x = e1, y = e2, z = s; axis at the in-plane center index)."""
     from types import SimpleNamespace
 
     c = np.stack([np.full(n_s, (n_inplane // 2) * step), np.full(n_s, (n_inplane // 2) * step),
                   np.arange(n_s) * step], 1)
     eye = np.eye(3)
-    return SimpleNamespace(centres=c, step=step, t=np.tile(eye[2], (n_s, 1)), e1=np.tile(eye[0], (n_s, 1)),
+    return SimpleNamespace(centers=c, step=step, t=np.tile(eye[2], (n_s, 1)), e1=np.tile(eye[0], (n_s, 1)),
                            e2=np.tile(eye[1], (n_s, 1)))
 
 
-def term_particles(st, s_centre: float, reg: Registration, offset: tuple, screw: tuple[float, float],
-                   plus_at_minus_z: bool, half_length: float, every: int = 1, centre_only: bool = False):
+def term_particles(st, s_center: float, reg: Registration, offset: tuple, screw: tuple[float, float],
+                   plus_at_minus_z: bool, half_length: float, every: int = 1, center_only: bool = False):
     """Lattice-registered particles of a segment registered in the term route (``bands``), whose coordinates have the
-    segment centre as origin: a reference point x sits in the segment at
+    segment center as origin: a reference point x sits in the segment at
 
         y = F_p Rz(-roll) (x - shift z^) + (dx, dy, 0),
 
-    (dx, dy) = ``offset``, the refined axis position along (e1, e2). ``st``: centre line and frames along the filament
-    (centres, e1, e2, t sampled every st.step A); ``s_centre``: arc length of the segment centre. Lattice points
-    (0, 0, j P) within +-half_length of the centre; rotations A = [e1 e2 t] F_p Rz(-roll) Rz(j omega), turned by FLIP
+    (dx, dy) = ``offset``, the refined axis position along (e1, e2). ``st``: center line and frames along the filament
+    (centers, e1, e2, t sampled every st.step A); ``s_center``: arc length of the segment center. Lattice points
+    (0, 0, j P) within +-half_length of the center; rotations A = [e1 e2 t] F_p Rz(-roll) Rz(j omega), turned by FLIP
     when the reference has its plus end at -z. Returns positions (n, 3), rotations (n, 3, 3), arc lengths (n,)."""
     P, omega = screw
     F_p = FLIP if reg.flip else np.eye(3)
@@ -139,18 +139,18 @@ def term_particles(st, s_centre: float, reg: Registration, offset: tuple, screw:
     js, y = js[inside], y[inside]
     order = np.argsort(y)
     js, y = js[order], y[order]
-    if centre_only:
+    if center_only:
         i = int(np.argmin(np.abs(y)))
         js, y = js[i:i + 1], y[i:i + 1]
     elif every > 1:
         js, y = js[::every], y[::every]
-    s = s_centre + y
-    n_s = len(st.centres)
+    s = s_center + y
+    n_s = len(st.centers)
     idx = np.clip(s / st.step, 0, n_s - 1)
     i0 = np.floor(idx).astype(int)
     i1 = np.minimum(i0 + 1, n_s - 1)
     w = (idx - i0)[:, None]
-    pos = (1 - w) * st.centres[i0] + w * st.centres[i1]
+    pos = (1 - w) * st.centers[i0] + w * st.centers[i1]
     rots = []
     for q, j in enumerate(js):
         i = int(round(idx[q]))

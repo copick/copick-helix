@@ -27,7 +27,7 @@ def _straightened(vol, beam, tilt):
     n = vol.shape[0]
     c = np.stack([np.full(n, (N_IN // 2) * STEP), np.full(n, (N_IN // 2) * STEP), np.arange(n) * STEP], 1)
     eye = np.eye(3)
-    return Straightened(vol=vol, step=STEP, centres=c, t=np.tile(eye[2], (n, 1)), e1=np.tile(eye[0], (n, 1)),
+    return Straightened(vol=vol, step=STEP, centers=c, t=np.tile(eye[2], (n, 1)), e1=np.tile(eye[0], (n, 1)),
                         e2=np.tile(eye[1], (n, 1)), beam_local=np.tile(beam, (n, 1)), tilt_local=np.tile(tilt, (n, 1)),
                         protein_sign=1.0, eq_coverage_deg=100.0, geometry=TiltGeometry())
 
@@ -50,7 +50,7 @@ def data():
         v = rotate(plus, rng.uniform(0, 360), axes=(1, 2), reshape=False, order=1)
         v = np.roll(v, int(rng.integers(0, 6)), axis=0)
         if pol == "minus":
-            v = v[::-1, ::-1, :].copy()  # 180 deg about x through the volume centre
+            v = v[::-1, ::-1, :].copy()  # 180 deg about x through the volume center
         off = rng.uniform(-4, 4, 2)  # axis offset (A) along (e1, e2)
         v = nd_shift(v, (0, off[1] / STEP, off[0] / STEP), order=1)
         sym = 0.5 * (v + v[::-1, ::-1, :])  # apolar: both polarities superposed
@@ -61,8 +61,8 @@ def data():
         clean[f"f{i}"] = v.astype(np.float32)
         truth[f"f{i}"] = pol
     cfg = bands.TermConfig(r_out=fam.term_r_out, starts=3)
-    res = bands.analyse(term_segments(fils, fam.segment_length), fam, cfg, workers=1, log=lambda *a: None)
-    res_apolar = bands.analyse(term_segments(apolar, fam.segment_length), fam, cfg, workers=1, log=lambda *a: None)
+    res = bands.analyze(term_segments(fils, fam.segment_length), fam, cfg, workers=1, log=lambda *a: None)
+    res_apolar = bands.analyze(term_segments(apolar, fam.segment_length), fam, cfg, workers=1, log=lambda *a: None)
     return fam, fils, clean, truth, res, res_apolar
 
 
@@ -95,7 +95,7 @@ def test_registered_particles_agree_and_conventions_matter(data):
             s_c = (reg.segment * n + n // 2) * st.step
             pos, rots, s_arc = term_particles(st, s_c, reg, o, (screw[0], om_sign * screw[1]), fam.plus_at_minus_z,
                                               L / 2)
-            k = int(np.argmin(np.abs(s_arc - (s_c + 85.0))))  # about three subunits off-centre: the screw acts
+            k = int(np.argmin(np.abs(s_arc - (s_c + 85.0))))  # about three subunits off-center: the screw acts
             subs.append(extract(clean[row.filament], STEP, np.zeros(3), pos[k], rots[k], (150.0, 50.0, 50.0)))
         return float(np.median([_cc(subs[i], subs[j]) for i in range(len(subs)) for j in range(i + 1, len(subs))]))
 

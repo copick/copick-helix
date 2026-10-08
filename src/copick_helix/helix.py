@@ -88,7 +88,7 @@ class Support:
     n_max: int
     exclude: list[tuple[int, float]] = field(default_factory=lambda: [(0, 0.0)])  # (n, Z): radial profile etc.
     drop_n0: bool = False  # drop n = 0 at every Z
-    eq_nmax: int = -1  # drop |n| <= eq_nmax for |Z| < eq_band: missing-wedge and off-centring leakage, not lattice
+    eq_nmax: int = -1  # drop |n| <= eq_nmax for |Z| < eq_band: missing-wedge and off-centering leakage, not lattice
     eq_band: float = 0.0
 
     def nz_mask(self, n: np.ndarray, Z: np.ndarray, z_tol: float) -> np.ndarray:

@@ -69,7 +69,7 @@ class SegmentFit:
 
 def fit_segment(seg: np.ndarray, geom: SegmentGeometry, step: float, sym: HelicalSymmetry, cfg: InvariantConfig,
                 planes: PolarPlanes | None = None) -> SegmentFit:
-    """Fit the configured terms of one segment (seg[z, y, x], protein positive, axis at the in-plane centre)."""
+    """Fit the configured terms of one segment (seg[z, y, x], protein positive, axis at the in-plane center)."""
     if planes is None:
         planes = PolarPlanes(step, seg.shape[1], cfg.r_band, cfg.r_mask)
     tol = cfg.plane_tol_frac / (seg.shape[0] * step)

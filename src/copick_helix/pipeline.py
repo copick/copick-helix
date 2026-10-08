@@ -149,7 +149,7 @@ def average_reference(family: Family, filaments: dict[str, Straightened], params
         half = (L / 2, family.in_plane_half_width * 0.8, family.in_plane_half_width * 0.8)
         for row in res.segments[res.segments.filament == name].itertuples():
             reg = Registration(row.segment, row.flip, row.roll_deg, row.shift_A, row.score)
-            pos, rots, _ = lattice_particles(grid, reg, L, 1.0, screw, family.plus_at_minus_z, centre_only=True)
+            pos, rots, _ = lattice_particles(grid, reg, L, 1.0, screw, family.plus_at_minus_z, center_only=True)
             sub = extract(v, st.step, np.zeros(3), pos[0], rots[0], half)
             acc = sub if acc is None else acc + sub
             n += 1
@@ -159,7 +159,7 @@ def average_reference(family: Family, filaments: dict[str, Straightened], params
 def registration_particles(family: Family, filaments: dict[str, Straightened], params: pd.DataFrame,
                            res: iterative.IterativeResult, every: int | None = None) -> dict:
     """Per filament: (positions (n, 3) A, rotations (n, 3, 3), scores (n,), segment (n,)) in tomogram coordinates.
-    One particle per segment (the lattice point nearest its centre), or with ``every`` every n-th lattice point of
+    One particle per segment (the lattice point nearest its center), or with ``every`` every n-th lattice point of
     each segment (dense sampling for averaging)."""
     from .registration import Registration, lattice_particles
 
@@ -172,7 +172,7 @@ def registration_particles(family: Family, filaments: dict[str, Straightened], p
         for row in res.segments[res.segments.filament == name].itertuples():
             reg = Registration(row.segment, row.flip, row.roll_deg, row.shift_A, row.score)
             pos, rots, _ = lattice_particles(st, reg, family.segment_length, factor, screw, family.plus_at_minus_z,
-                                             centre_only=every is None, every=every or 1)
+                                             center_only=every is None, every=every or 1)
             P.append(pos)
             R.append(rots)
             S.append(np.full(len(pos), row.score))
@@ -216,7 +216,7 @@ def save(result: Result, out_dir: str):
 
 
 def term_segments(filaments: dict[str, Straightened], segment_length: float) -> dict:
-    """Segments of straightened tomogram volumes for the term route (centre at index k n + n // 2)."""
+    """Segments of straightened tomogram volumes for the term route (center at index k n + n // 2)."""
     from .bands import SegmentRef
 
     out = {}
@@ -250,9 +250,9 @@ def term_registration_particles(family: Family, filaments: dict[str, Straightene
         n = int(round(segment_length / st.step))
         P, R, S, G = [], [], [], []
         for reg, off in _term_regs(res, name):
-            s_centre = (reg.segment * n + n // 2) * st.step
-            pos, rots, _ = term_particles(st, s_centre, reg, off, screw, family.plus_at_minus_z, segment_length / 2,
-                                          every=every or 1, centre_only=every is None)
+            s_center = (reg.segment * n + n // 2) * st.step
+            pos, rots, _ = term_particles(st, s_center, reg, off, screw, family.plus_at_minus_z, segment_length / 2,
+                                          every=every or 1, center_only=every is None)
             P.append(pos)
             R.append(rots)
             S.append(np.full(len(pos), reg.score))
@@ -264,7 +264,7 @@ def term_registration_particles(family: Family, filaments: dict[str, Straightene
 
 def term_average(family: Family, segments: dict, res, seeds: set | None = None, half_axial: float = 300.0) -> tuple:
     """Fast average of the registered segments themselves (tilt-series reconstructions or tomogram slices) in the
-    exported frame (+Z towards the plus end): one particle per segment, its lattice point nearest the centre.
+    exported frame (+Z towards the plus end): one particle per segment, its lattice point nearest the center.
     Returns (map [z, y, x], step)."""
     from .registration import extract, local_frames, term_particles
 
@@ -284,7 +284,7 @@ def term_average(family: Family, segments: dict, res, seeds: set | None = None, 
             grid = local_frames(n_s, step, n_in)
             half_w = 0.9 * (n_in // 2) * step
             pos, rots, _ = term_particles(grid, (n_s // 2) * step, reg, off, screw, family.plus_at_minus_z,
-                                          n_s * step / 2, centre_only=True)
+                                          n_s * step / 2, center_only=True)
             sub = extract(vol - vol.mean(), step, np.zeros(3), pos[0], rots[0],
                           (min(half_axial, 0.45 * n_s * step), half_w, half_w))
             acc = sub if acc is None else acc + sub

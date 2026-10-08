@@ -52,8 +52,8 @@ def _straighten_run(args):
         if tomo is None:
             tomo = io.read_tomogram(root, run, vs, tomo_type)
             tomo = (tomo - tomo.mean()) / tomo.std()
-        st = straighten_one(pts, tomo, vs, family, geom, normalise=False, window=family.recentre_window,
-                            lim_A=family.recentre_max_shift)
+        st = straighten_one(pts, tomo, vs, family, geom, normalize=False, window=family.recenter_window,
+                            lim_A=family.recenter_max_shift)
         st.meta.update({"run": run, "instance_id": int(iid), "source": input_uri, "tomogram": tomogram})
         if keep_volumes:
             st.save(stem)
@@ -118,7 +118,7 @@ def _common(f):
 @add_debug_option
 def straighten(config, run_names, input_uri, tomogram, family_name, tilt_range, tilt_axis, min_length, work_dir,
                keep_volumes, debug):
-    """Straighten and recentre traced filaments into WORK_DIR/straightened."""
+    """Straighten and recenter traced filaments into WORK_DIR/straightened."""
     family = get_family(family_name)
     _straighten_all(config, run_names, input_uri, tomogram, family, tilt_range, tilt_axis,
                     min_length or 2 * family.segment_length, work_dir, keep_volumes=True)
@@ -130,9 +130,9 @@ def _axial_step(family) -> float:
     return float(p.get("rise", p.get("monomer_repeat", 40.0)))
 
 
-def _write_recentred(root, fils, family, output_uri, picks_uri, spacing):
-    """Recentred centre lines as filaments (trace order, polarity unknown) and, with ``picks_uri``, picks every
-    ``spacing`` A along them oriented with the rotation-minimising frame (+Z along the trace direction; rotation about
+def _write_recentered(root, fils, family, output_uri, picks_uri, spacing):
+    """Recentered center lines as filaments (trace order, polarity unknown) and, with ``picks_uri``, picks every
+    ``spacing`` A along them oriented with the rotation-minimizing frame (+Z along the trace direction; rotation about
     the axis arbitrary but continuous)."""
     by_run: dict = {}
     for name, st in fils.items():
@@ -141,21 +141,21 @@ def _write_recentred(root, fils, family, output_uri, picks_uri, spacing):
     for run, names in by_run.items():
         if output_uri:
             obj, user, session = _filament_uri(output_uri)
-            items = [{"instance_id": fils[n].meta["instance_id"], "centres": fils[n].centres, "reverse": False,
+            items = [{"instance_id": fils[n].meta["instance_id"], "centers": fils[n].centers, "reverse": False,
                       "known": False,
-                      "metadata": {"copick_helix": {"version": __version__, "family": family.name, "recentred": True,
+                      "metadata": {"copick_helix": {"version": __version__, "family": family.name, "recentered": True,
                                                     "lattice_analysis": "not attempted", "polarity": "unknown",
                                                     "source": fils[n].meta.get("source"),
                                                     "tomogram": fils[n].meta.get("tomogram"),
-                                                    "recentring": fils[n].recentring}}} for n in names]
-            io.write_centrelines(root, run, obj, user, session, items)
+                                                    "recentering": fils[n].recentering}}} for n in names]
+            io.write_centerlines(root, run, obj, user, session, items)
         if picks_uri:
             P, R, ids = [], [], []
             for n in names:
                 st = fils[n]
                 k = np.unique(np.round(np.arange(0.0, st.length + 1e-6, spacing) / st.step).astype(int))
-                k = k[k < len(st.centres)]
-                P.append(st.centres[k])
+                k = k[k < len(st.centers)]
+                P.append(st.centers[k])
                 R.append(np.stack([st.e1[k], st.e2[k], st.t[k]], axis=2))  # columns e1, e2, t
                 ids.append(np.full(len(k), st.meta["instance_id"]))
             if P:
@@ -163,29 +163,29 @@ def _write_recentred(root, fils, family, output_uri, picks_uri, spacing):
                 io.write_particles(root, run, obj, user, session, np.concatenate(P), np.concatenate(R),
                                    np.concatenate(ids), np.ones(sum(len(p) for p in P)))
                 n_picks += sum(len(p) for p in P)
-    click.echo(f"recentred {len(fils)} filaments in {len(by_run)} runs"
+    click.echo(f"recentered {len(fils)} filaments in {len(by_run)} runs"
                + (f" -> {output_uri}" if output_uri else "") + (f"; {n_picks} picks -> {picks_uri}" if picks_uri else ""))
 
 
-@click.command("helix-recentre", context_settings={"show_default": True})
+@click.command("helix-recenter", context_settings={"show_default": True})
 @_common
 @click.option("-o", "--output", "output_uri", required=True,
-              help="object:user/session for the recentred centre lines (Catmull-Rom filaments, polarity unknown).")
+              help="object:user/session for the recentered center lines (Catmull-Rom filaments, polarity unknown).")
 @click.option("--picks", "picks_uri", default=None,
-              help="Also write picks along the recentred lines: object:user/session.")
+              help="Also write picks along the recentered lines: object:user/session.")
 @click.option("--spacing", type=float, default=None, help="With --picks: spacing along the line (A); default two "
                                                            "subunit steps of the family.")
 @click.option("--workers", type=int, default=4, help="Worker processes (one run each).")
 @add_debug_option
-def recentre(config, run_names, input_uri, tomogram, family_name, tilt_range, tilt_axis, min_length, work_dir,
+def recenter(config, run_names, input_uri, tomogram, family_name, tilt_range, tilt_axis, min_length, work_dir,
              keep_volumes, output_uri, picks_uri, spacing, workers, debug):
-    """Recentre traced filaments on their density (the family's cross-section profile) and write the recentred centre
+    """Recenter traced filaments on their density (the family's cross-section profile) and write the recentered center
     lines, without any lattice or polarity analysis. Picks, if asked for, are evenly spaced and oriented along the
     line only (+Z along the trace direction, which is not a polarity)."""
     family = get_family(family_name)
     root, fils = _straighten_all(config, run_names, input_uri, tomogram, family, tilt_range, tilt_axis,
                                  min_length or family.segment_length, work_dir, keep_volumes, workers=workers)
-    _write_recentred(root, fils, family, output_uri, picks_uri, spacing or 2 * _axial_step(family))
+    _write_recentered(root, fils, family, output_uri, picks_uri, spacing or 2 * _axial_step(family))
 
 
 @click.command("helix-polarity", context_settings={"show_default": True})
@@ -193,7 +193,7 @@ def recentre(config, run_names, input_uri, tomogram, family_name, tilt_range, ti
 @click.option("--methods", default="invariants,iterative", help="Comma-separated: invariants, iterative.")
 @click.option("--label/--no-label", default=True, help="Name the groups plus/minus with the family's atomic model.")
 @click.option("-o", "--output", "output_uri", default=None,
-              help="object:user/session for the results: filaments (recentred centre lines, Catmull-Rom, ordered "
+              help="object:user/session for the results: filaments (recentered center lines, Catmull-Rom, ordered "
                    "minus -> plus when known, analysis in metadata) and picks (one registration per segment).")
 @click.option("--picks", "picks_uri", default=None, help="Also write dense lattice-registered picks: object:user/session.")
 @click.option("--every", type=int, default=1, help="With --picks: every n-th lattice point (MT dimer, helical subunit).")
@@ -228,10 +228,10 @@ def polarity(config, run_names, input_uri, tomogram, family_name, tilt_range, ti
     family = get_family(family_name)
     if not family.lattice_analysis and route == "auto":
         click.echo(f"{family.name}: no lattice or polarity analysis for this family "
-                   f"({family.notes.get('lattice_analysis', 'off')}); recentring only, as helix-recentre")
+                   f"({family.notes.get('lattice_analysis', 'off')}); recentering only, as helix-recenter")
         root, fils = _straighten_all(config, run_names, input_uri, tomogram, family, tilt_range, tilt_axis,
                                      min_length or family.segment_length, work_dir, keep_volumes, workers=workers)
-        _write_recentred(root, fils, family, output_uri, picks_uri, every * _axial_step(family))
+        _write_recentered(root, fils, family, output_uri, picks_uri, every * _axial_step(family))
         return
     terms = route == "terms" or (route == "auto" and family.route == "terms")
     root, fils = _straighten_all(config, run_names, input_uri, tomogram, family, tilt_range, tilt_axis,
@@ -286,7 +286,7 @@ def polarity(config, run_names, input_uri, tomogram, family_name, tilt_range, ti
 
 def _write_copick(root, fils, family, table, call_col, reg, dense, output_uri, picks_uri, seeds_only, lattice_detected,
                   ref_path):
-    """Centre-line filaments (ordered minus -> plus when known; analysis in metadata), registration picks under the
+    """Center-line filaments (ordered minus -> plus when known; analysis in metadata), registration picks under the
     same URI, and optional dense picks."""
     rows = table.set_index("filament")
     by_run: dict = {}
@@ -307,7 +307,7 @@ def _write_copick(root, fils, family, table, call_col, reg, dense, output_uri, p
                 seed = bool(row["seed"]) if "seed" in rows else False
                 info = {k: (v.item() if hasattr(v, "item") else v) for k, v in row.items() if not str(k).startswith("_")}
                 items.append({
-                    "instance_id": fils[name].meta["instance_id"], "centres": fils[name].centres,
+                    "instance_id": fils[name].meta["instance_id"], "centers": fils[name].centers,
                     "reverse": call == "plus",  # 'plus': plus end at the first trace point -> reverse to minus -> plus
                     "known": seed and call in ("plus", "minus"),
                     "metadata": {"copick_helix": {"version": __version__, "family": family.name, "call": call,
@@ -315,7 +315,7 @@ def _write_copick(root, fils, family, table, call_col, reg, dense, output_uri, p
                                                   "polarity_convention": "minus_to_plus" if call in ("plus", "minus") else None,
                                                   "registration_picks": output_uri, "reference_map": ref_path,
                                                   "analysis": info}}})
-            io.write_centrelines(root, run, obj, user, session, items)
+            io.write_centerlines(root, run, obj, user, session, items)
             sel = selected(names, reg)
             if sel:
                 io.write_particles(root, run, obj, user, session, np.concatenate([reg[n][0] for n in sel]),
@@ -356,10 +356,10 @@ def _polarity_terms(root, fils, family, work_dir, label, output_uri, picks_uri, 
                                       os.path.join(work_dir, "segments"), workers=workers, log=click.echo)
     else:
         segs = term_segments(fils, L)
-    res = bands.analyse(segs, family, bands.TermConfig(r_out=family.term_r_out), workers=workers, label=label,
+    res = bands.analyze(segs, family, bands.TermConfig(r_out=family.term_r_out), workers=workers, label=label,
                         log=click.echo)
     s = res.summary
-    geo = {n: (st.meta["run"], st.centres[::10], st.t[::10]) for n, st in fils.items()}
+    geo = {n: (st.meta["run"], st.centers[::10], st.t[::10]) for n, st in fils.items()}
     s["bundle_pairs_same_polarity"] = {}
     for key, tab in (("data", res.table), ("decoy", res.decoy_table)):
         if tab is None:

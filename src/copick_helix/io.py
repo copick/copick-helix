@@ -2,7 +2,7 @@
 
 Reading: filament traces (``object:user/session``), tomograms (voxel spacing, type).
 Writing:
-- filaments: the recentred centre lines as Catmull-Rom curves, ordered minus -> plus (pointed -> barbed) when the
+- filaments: the recentered center lines as Catmull-Rom curves, ordered minus -> plus (pointed -> barbed) when the
   polarity is known, with the analysis under ``metadata["copick_helix"]``;
 - picks: lattice-registered particles with full transforms (+Z towards the plus end), one per segment (the
   registration) or dense (for averaging).
@@ -44,12 +44,12 @@ def tomogram_extent(root, run_name: str, voxel_spacing: float, tomo_type: str):
     return shape[2] * voxel_spacing, shape[1] * voxel_spacing, shape[0] * voxel_spacing
 
 
-def write_centrelines(root, run_name: str, object_name: str, user_id: str, session_id: str, items: list[dict],
+def write_centerlines(root, run_name: str, object_name: str, user_id: str, session_id: str, items: list[dict],
                       control_spacing: float = 100.0, step: float = 10.0):
-    """Filaments as Catmull-Rom curves through the recentred centre line (control points every ``control_spacing``
+    """Filaments as Catmull-Rom curves through the recentered center line (control points every ``control_spacing``
     A, points regenerated every ``step`` A), so every copick viewer shows the line the analysis used.
 
-    Each item: {"instance_id", "centres" (n, 3) A along the analysis direction, "reverse" (order minus -> plus),
+    Each item: {"instance_id", "centers" (n, 3) A along the analysis direction, "reverse" (order minus -> plus),
     "known" (polarity_known), "radius", "metadata"}."""
     from copick.models import CopickFilament
 
@@ -57,7 +57,7 @@ def write_centrelines(root, run_name: str, object_name: str, user_id: str, sessi
     out = run.new_filaments(object_name, session_id, user_id, exist_ok=True)
     fils = []
     for it in items:
-        c = np.asarray(it["centres"], float)
+        c = np.asarray(it["centers"], float)
         if it["reverse"]:
             c = c[::-1]
         seg = np.r_[0, np.cumsum(np.linalg.norm(np.diff(c, axis=0), axis=1))]

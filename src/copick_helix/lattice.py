@@ -56,7 +56,7 @@ def equator_count(vol: np.ndarray, step: float, beam, tilt_axis, orders=range(9,
     m = measured_mask_3d(v.shape, step, beam, tilt_axis, 90.0, 20.0, 400.0)  # band limits only: the data's own coverage
     v = np.fft.irfftn(np.fft.rfftn(v) * m, s=v.shape).astype(np.float32)
     c = v.shape[1] // 2
-    r, _, cyl = cylindrical(v, step, 60.0, 160.0, 2.5, 256, centre=(c, c))
+    r, _, cyl = cylindrical(v, step, 60.0, 160.0, 2.5, 256, center=(c, c))
     n, Z, g = bessel_coefficients(cyl, step)
     zsel = np.abs(Z) <= 1 / 1500.0
     rsel = (r >= wall[0]) & (r <= wall[1])
@@ -70,7 +70,7 @@ def layer_scan(vol: np.ndarray, step: float, order: int, z_pred: float, frac: fl
     """Power of Bessel order ``order`` against Z in [z_pred (1 - frac), z_pred (1 + frac)] for a whole straightened
     filament (exact DFT along z, Hann window, radially weighted). Returns (Z, P)."""
     c = vol.shape[1] // 2
-    r, _, cyl = cylindrical(vol - vol.mean(), step, 4.0, r_max, step / 2, 256, centre=(c, c))
+    r, _, cyl = cylindrical(vol - vol.mean(), step, 4.0, r_max, step / 2, 256, center=(c, c))
     a = np.fft.fft(cyl, axis=1)
     nidx = np.fft.fftfreq(256, 1 / 256).round().astype(int)
     zc = np.arange(cyl.shape[2]) * step

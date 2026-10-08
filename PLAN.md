@@ -34,22 +34,22 @@ package.
 
 | | Microtubule | Actin | Intermediate filament (vimentin) |
 |---|---|---|---|
-| Structure | N_S lattice (13_3 in these cells), seam | 1-start left-handed helix, 2 long-pitch strands | 5 protofibrils, luminal fibre (PDB 8RVE) |
+| Structure | N_S lattice (13_3 in these cells), seam | 1-start left-handed helix, 2 long-pitch strands | 5 protofibrils, luminal fiber (PDB 8RVE) |
 | Polar | yes | yes | **no** (antiparallel tetramers) |
 | Helical parameters | monomer repeat about 41 A (measured per filament) | rise about 27.5 A, twist about -166.6 deg (fit per filament; varies, e.g. with cofilin) | rise 42.5 A, twist 73.7 deg (8RVE); about 21 nm protofibril repeat |
 | Radius band | 80-145 A (wall) | 0-50 A | about 0-60 A |
-| Recentring prior | ring, r 112 A | solid rod, r about 35 A | rod or tube, r about 50 A |
+| Recentering prior | ring, r 112 A | solid rod, r about 35 A | rod or tube, r about 50 A |
 | Fourier support | equator n = 0, +-13 k; monomer line n = 3 + 13 k | (n, m) terms with Z = (m + n * twist/360) / rise: 59 A (n = -1), 51 A (n = +1), 36 nm crossover (n = +2), 27.5 A meridian (n = 0) | from 42.5 A / 73.7 deg; to be mapped from 8RVE |
 | Lattice read-out | protofilament number from the real-space equator count | twist / crossover length per filament | rise / twist, protofibril repeat, diameter |
 | Polarity read-out | phase invariants + iterative (done) | term route from tilt-series segments (done): (1,0), (-1,1), (3,-1) low band, (-4,2), (3,-1), (-1,1), (-3,2) mid band | no lattice in 10 A tomograms or 10521 tilt series (term route; the synthetic control recovers it) |
-| Biological checks | neighbours, lamella-level clustering | bundle consistency (filopodia-like bundles are uniformly polar) | n/a |
+| Biological checks | neighbors, lamella-level clustering | bundle consistency (filopodia-like bundles are uniformly polar) | n/a |
 
 ## Package layout
 
 ```
 src/copick_helix/
-  families/{base,microtubule,actin,intermediate}.py   # FilamentFamily: support, priors, terms, recentring profile
-  straighten.py      # trace -> rotation-minimising frames -> sampled volume; recentring with the family's profile
+  families/{base,microtubule,actin,intermediate}.py   # FilamentFamily: support, priors, terms, recentering profile
+  straighten.py      # trace -> rotation-minimizing frames -> sampled volume; recentering with the family's profile
   repeat.py          # axial repeat (MT), rise / twist fit (actin, IF) from layer lines
   fourier.py         # cylindrical resampling, exact layer-line planes, polar resampling, measured-region masks
   fit.py             # wedge-aware least squares of the allowed orders
@@ -75,7 +75,7 @@ tests/               # synthetic only (fast): MT plus/minus split, actin plus/mi
   `copick.process.commands`), so copick needs no change.
 - Keeping it out of copick-utils keeps gemmi, zarr-particle-tools and the scientific stack out of copick-utils'
   dependencies.
-- Proposed home: a repository under the copick organisation. The name is to be decided; candidates are
+- Proposed home: a repository under the copick organization. The name is to be decided; candidates are
   `copick-helix` and `copick-polarity`. The package also measures lattices and in-plane rotation, which argues for
   the former.
 - **Copick convention to settle:** with `polarity_known: true` the point order follows the polarity, but copick does
@@ -113,7 +113,7 @@ tests/               # synthetic only (fast): MT plus/minus split, actin plus/mi
 - **Twist:** the physical (deposited) twist, Z = (m - n twist / 360) / rise: MT -360/N, vimentin +73.73, actin about
   -166.6.
 - **Outputs of `helix-polarity -o object:user/session`:**
-  - **filaments:** the recentred centre line as a Catmull-Rom curve, ordered minus -> plus when known, with
+  - **filaments:** the recentered center line as a Catmull-Rom curve, ordered minus -> plus when known, with
     `polarity_known` for seeds and the analysis in `metadata["copick_helix"]`;
   - **picks** (same name): one registration per segment, a lattice-registered particle with its full transform
     (+Z towards the plus end);
@@ -126,9 +126,9 @@ tests/               # synthetic only (fast): MT plus/minus split, actin plus/mi
 - **Validation:** synthetic round trips (microtubule and vimentin) check the roll, flip, shift and screw conventions,
   each with a control that has to fail. On real 10521 microtubules the package reproduces the prototype calls
   (54/54).
-- **Open:** registration continuity along a filament. Neighbouring microtubule segments can register to seam positions
+- **Open:** registration continuity along a filament. Neighboring microtubule segments can register to seam positions
   that differ by a 13-fold near-symmetry. Measure it, then choose per segment the equivalent closest to its
-  neighbours.
+  neighbors.
 - **Actin (done): the term route** (`bands.py`, `tiltseries.py`, `--source tiltseries`).
   - **Why tilt series:** per-filament polarity is not measurable in 10 A tomograms. Local reconstructions from the
     tilt series carry it at 300-28 A.

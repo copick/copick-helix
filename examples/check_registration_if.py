@@ -40,7 +40,7 @@ def med_cc(mod, omega_sign=1.0):
     for row in res.segments.itertuples():
         reg = Registration(row.segment, *mod(row.flip, row.roll_deg, row.shift_A), row.score)
         pos, rots, _ = lattice_particles(fils[row.filament], reg, fam.segment_length, 1.0,
-                                         (screw[0], omega_sign * screw[1]), fam.plus_at_minus_z, centre_only=True)
+                                         (screw[0], omega_sign * screw[1]), fam.plus_at_minus_z, center_only=True)
         subs.append(extract(clean[row.filament], 5.0, np.zeros(3), pos[0], rots[0], (200.0, 80.0, 80.0)))
     cc = [T._cc(subs[i], subs[j]) for i in range(len(subs)) for j in range(i + 1, len(subs))]
     return np.median(cc)

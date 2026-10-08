@@ -96,7 +96,7 @@ def test_apolar_control_has_no_polarity_structure(synthetic):
     """A non-polar lattice (plus + minus) must not produce polarity groups: no eigenvalue gap, and the consensus
     reference no more polar than random assignments."""
     lat, plus, fils, truth = synthetic
-    minus = np.flip(np.flip(plus, 0), 1)  # 180 deg about x on the grid (axis at the centre)
+    minus = np.flip(np.flip(plus, 0), 1)  # 180 deg about x on the grid (axis at the center)
     apolar = 0.5 * (plus + minus)
     rng = np.random.default_rng(5)
     fam = microtubule()

@@ -1,6 +1,6 @@
 """Atomic models as densities on the straightened-filament grid (optional; needs gemmi).
 
-Used only to name which polarity group is 'plus' and for synthetic tests; the analyses themselves are data-driven.
+Used only to name which polarity group is 'plus' and for synthetic tests; the analyzes themselves are data-driven.
 
 Microtubule lattices N_S are rolled from the 6DPV surface lattice (undecorated GDP microtubule, a 3-protofilament x
 2-dimer patch of a 14_3 lattice, axis along z). Nucleotides sit on the -z face of every monomer in that frame, so the
@@ -118,7 +118,7 @@ class MicrotubuleLattice:
 
 
 def density(xyz, w, apix, box_xy, length, sigma=1.5):
-    """Gaussian-splatted density vol[z, y, x]; xy centred on the axis (index n/2), z from 0."""
+    """Gaussian-splatted density vol[z, y, x]; xy centered on the axis (index n/2), z from 0."""
     from scipy.ndimage import gaussian_filter
 
     nxy = int(round(box_xy / apix))
@@ -142,7 +142,7 @@ def density(xyz, w, apix, box_xy, length, sigma=1.5):
 
 
 def on_grid(xyz, w, step: float, n_inplane: int, length: float, res: float = 10.0) -> np.ndarray:
-    """Model on the straightened grid: ``step`` sampling, n_inplane pixels with the axis at the centre index,
+    """Model on the straightened grid: ``step`` sampling, n_inplane pixels with the axis at the center index,
     band-limited to ``res`` A (built at step/2 and decimated)."""
     from .fourier import lowpass
 

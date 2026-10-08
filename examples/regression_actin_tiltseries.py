@@ -24,7 +24,8 @@ def geometry(straight_dir, names):
         p = os.path.join(straight_dir, n + ".json")
         if os.path.exists(p):
             m = json.load(open(p))
-            g[n] = (str(m["run"]), np.asarray(m["centres_A"])[::10], np.asarray(m["t"])[::10])
+            c = m["centers_A"] if "centers_A" in m else m["centres_A"]  # the prototype's files spell it centres_A
+            g[n] = (str(m["run"]), np.asarray(c)[::10], np.asarray(m["t"])[::10])
     return g
 
 
@@ -50,7 +51,7 @@ if __name__ == "__main__":
     os.makedirs(out_dir, exist_ok=True)
     fam = get_family("actin")
     refs = bands.segment_refs_from_dir(seg_root)
-    res = bands.analyse(refs, fam, workers=int(workers))
+    res = bands.analyze(refs, fam, workers=int(workers))
     res.table.to_csv(f"{out_dir}/{tag}_calls.tsv", sep="\t", index=False)
     res.segments.to_csv(f"{out_dir}/{tag}_segments.tsv", sep="\t", index=False)
     res.decoy_table.to_csv(f"{out_dir}/{tag}_decoy_calls.tsv", sep="\t", index=False)

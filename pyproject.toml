@@ -30,7 +30,7 @@ dev = ["pytest", "matplotlib"]
 helix_straighten = "copick_helix.cli:straighten"
 helix_polarity = "copick_helix.cli:polarity"
 helix_picks = "copick_helix.cli:picks"
-helix_recentre = "copick_helix.cli:recentre"
+helix_recenter = "copick_helix.cli:recenter"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/copick_helix"]

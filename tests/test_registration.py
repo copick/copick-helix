@@ -24,7 +24,7 @@ def _straightened(vol, beam, tilt):
     n = vol.shape[0]
     c = np.stack([np.full(n, 40 * STEP), np.full(n, 40 * STEP), np.arange(n) * STEP], 1)
     eye = np.eye(3)
-    return Straightened(vol=vol, step=STEP, centres=c, t=np.tile(eye[2], (n, 1)), e1=np.tile(eye[0], (n, 1)),
+    return Straightened(vol=vol, step=STEP, centers=c, t=np.tile(eye[2], (n, 1)), e1=np.tile(eye[0], (n, 1)),
                         e2=np.tile(eye[1], (n, 1)), beam_local=np.tile(beam, (n, 1)), tilt_local=np.tile(tilt, (n, 1)),
                         protein_sign=1.0, eq_coverage_deg=100.0, geometry=TiltGeometry())
 
@@ -71,13 +71,13 @@ def run():
     return fam, lat, plus, fils, clean, truth, res
 
 
-def _picks(fam, lat, fils, res, centre_only=True):
+def _picks(fam, lat, fils, res, center_only=True):
     out = []
     screw = fam.screw({"monomer_repeat": lat.a})
     for row in res.segments.itertuples():
         reg = Registration(row.segment, row.flip, row.roll_deg, row.shift_A, row.score)
         pos, rots, _ = lattice_particles(fils[row.filament], reg, fam.segment_length, 1.0, screw,
-                                         fam.plus_at_minus_z, centre_only=centre_only)
+                                         fam.plus_at_minus_z, center_only=center_only)
         out += [(row.filament, p, R) for p, R in zip(pos, rots)]
     return out
 
@@ -138,7 +138,7 @@ def test_helical_registration_round_trip():
         for row in res.segments.itertuples():
             reg = Registration(row.segment, *mod(row.flip, row.roll_deg, row.shift_A), row.score)
             pos, rots, _ = lattice_particles(fils[row.filament], reg, fam.segment_length, 1.0, (P, om_sign * om),
-                                             fam.plus_at_minus_z, centre_only=True)
+                                             fam.plus_at_minus_z, center_only=True)
             subs.append(extract(clean[row.filament], STEP, np.zeros(3), pos[0], rots[0], (200.0, 80.0, 80.0)))
         return np.median([_cc(subs[i], subs[j]) for i in range(len(subs)) for j in range(i + 1, len(subs))])
 

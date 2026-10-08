@@ -1,7 +1,7 @@
 """Fourier tools on straightened filament volumes.
 
 Volumes are ``vol[z, y, x]`` with z along the filament (t), y = e2, x = e1 (about the beam), the axis at the in-plane
-centre index, and isotropic sampling ``step`` (A).
+center index, and isotropic sampling ``step`` (A).
 
 Transformations of a filament's Fourier–Bessel coefficients c_n (both g(r, n, Z) and F(R, n) on a layer line):
 rotation by phi0 about the axis: c_n -> c_n exp(-i n phi0); shift by z0: c_n -> c_n exp(-2 pi i Z z0);
@@ -63,10 +63,10 @@ def measured_mask_3d(shape, step, beam, tilt_axis, half_wedge, lp=None, hp=None)
     return m
 
 
-def cylindrical(vol, step, rmin, rmax, dr, nphi=256, centre=None):
+def cylindrical(vol, step, rmin, rmax, dr, nphi=256, center=None):
     """rho(r, phi, z) from vol[z, y, x]; phi from x (e1) towards y (e2). Returns (r, phi, cyl[r, phi, z])."""
     nz, ny, nx = vol.shape
-    cy, cx = (ny // 2, nx // 2) if centre is None else centre
+    cy, cx = (ny // 2, nx // 2) if center is None else center
     r = np.arange(rmin, rmax + 1e-6, dr)
     phi = np.arange(nphi) * 2 * np.pi / nphi
     out = np.empty((len(r), nphi, nz), np.float32)
@@ -107,7 +107,7 @@ class PolarPlanes:
         self.rmask = (0.5 - 0.5 * np.cos(np.pi * w)).astype(np.float32)
 
     def plane(self, seg: np.ndarray, Z: float) -> np.ndarray:
-        """F(R, Phi) on kz = Z of seg[z, y, x] (exact DFT along z, Tukey-windowed; axis at the in-plane centre)."""
+        """F(R, Phi) on kz = Z of seg[z, y, x] (exact DFT along z, Tukey-windowed; axis at the in-plane center)."""
         n = seg.shape[0]
         w = tukey(n)
         s = np.arange(n) * self.step

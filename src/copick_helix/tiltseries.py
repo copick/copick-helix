@@ -2,16 +2,16 @@
 
 For thin filaments (actin, intermediate filaments) a CTF-deconvolved tomogram cannot follow the depth-dependent
 defocus, and the polar terms beyond the first CTF zero are lost. Here every segment is reconstructed on its own from
-the tilt series: one particle per segment, centred on the recentred centre line (from the straightened tomogram) at
-the segment centre and oriented as the local filament frame A = [e1 e2 t] (RELION / zpt map a reference vector a to
+the tilt series: one particle per segment, centered on the recentered center line (from the straightened tomogram) at
+the segment center and oriented as the local filament frame A = [e1 e2 t] (RELION / zpt map a reference vector a to
 A a in the tomogram). It is extracted with zarr-particle-tools' 2D extraction (its own per-particle defocus),
 back-projected on its own, gridding-corrected, and Wiener CTF-corrected with offset 1 / ``snr``. RELION's
 radial-average heuristic is not used, because a single particle has too few Fourier planes for it.
 
-Each output is ``vol[z = t, y = e2, x = e1]``, cropped in-plane to +-``half_width`` around the axis, centred at the
-box centre (index n // 2 along every axis), in the frame the term route (``bands``) and the registration use.
+Each output is ``vol[z = t, y = e2, x = e1]``, cropped in-plane to +-``half_width`` around the axis, centered at the
+box center (index n // 2 along every axis), in the frame the term route (``bands``) and the registration use.
 
-Coordinates: zarr-particle-tools takes particle centres relative to the tomogram centre, rlnTomoSize * unit / 2.
+Coordinates: zarr-particle-tools takes particle centers relative to the tomogram center, rlnTomoSize * unit / 2.
 The unit is a tilt-series pixel in RELION / ApexAgent stars, but a tomogram voxel in zarr-particle-tools' stars made
 from portal data. ``size_unit_A=None`` picks whichever candidate (tilt-series pixel, original pixel, the copick
 tomogram's voxel) makes rlnTomoSize match the copick tomogram's physical extent.
@@ -91,8 +91,8 @@ def size_unit(row, extent_A, voxel_A=None, tol=0.03) -> float:
 
 def plan(filaments: dict, segment_length: float, source: TiltSeriesSource, extents: dict, out_dir: str) -> dict:
     """Segments per tilt series. ``filaments``: name -> Straightened (meta: run); ``extents``: run -> (x extent A,
-    copick voxel A). Segment k is centred at index k n + n // 2 of the straightened centre line (n = L / step), the
-    centre the term route and the registration assume."""
+    copick voxel A). Segment k is centered at index k n + n // 2 of the straightened center line (n = L / step), the
+    center the term route and the registration assume."""
     tomos = read_tomograms(source.tomograms_star)
     tomos.index = [run_key(n) for n in tomos.rlnTomoName]
     by_tomo = {}
@@ -103,14 +103,14 @@ def plan(filaments: dict, segment_length: float, source: TiltSeriesSource, exten
         row = tomos.loc[run]
         unit = source.size_unit_A or size_unit(row, *extents[run])
         size = np.array([row[k] for k in ("rlnTomoSizeX", "rlnTomoSizeY", "rlnTomoSizeZ")], float)
-        centre = size * unit / 2
+        center = size * unit / 2
         n = int(round(segment_length / st.step))
-        for k in range(len(st.centres) // n):
+        for k in range(len(st.centers) // n):
             i = k * n + n // 2
             B = np.stack([st.e1[i], st.e2[i], st.t[i]], axis=1)
             by_tomo.setdefault(str(row.rlnTomoName), []).append({
-                "filament": name, "segment": k, "s_index": int(i), "s_centre_A": float(i * st.step),
-                "centre_A": st.centres[i].tolist(), "B": B, "centred": (st.centres[i] - centre).tolist(),
+                "filament": name, "segment": k, "s_index": int(i), "s_center_A": float(i * st.step),
+                "center_A": st.centers[i].tolist(), "B": B, "centered": (st.centers[i] - center).tolist(),
                 "euler": matrix_euler(B).tolist(), "beam": st.beam_local[i].tolist(), "tilt_axis": st.tilt_local[i].tolist(),
                 "stem": os.path.join(out_dir, name, f"seg{k:03d}")})
     return by_tomo
@@ -131,8 +131,8 @@ def _reconstruct_tomogram(job):
     tomos = read_tomograms(source.tomograms_star)
     row = tomos[tomos.rlnTomoName == tname].iloc[0]
     parts = pd.DataFrame([{
-        "rlnTomoName": tname, "rlnCenteredCoordinateXAngst": s["centred"][0],
-        "rlnCenteredCoordinateYAngst": s["centred"][1], "rlnCenteredCoordinateZAngst": s["centred"][2],
+        "rlnTomoName": tname, "rlnCenteredCoordinateXAngst": s["centered"][0],
+        "rlnCenteredCoordinateYAngst": s["centered"][1], "rlnCenteredCoordinateZAngst": s["centered"][2],
         "rlnAngleRot": s["euler"][0], "rlnAngleTilt": s["euler"][1], "rlnAnglePsi": s["euler"][2],
         "rlnOriginXAngst": 0.0, "rlnOriginYAngst": 0.0, "rlnOriginZAngst": 0.0, "rlnOpticsGroup": 1,
         "rlnTomoParticleName": f"{tname}/{j + 1}"} for j, s in enumerate(todo)])

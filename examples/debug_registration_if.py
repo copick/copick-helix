@@ -54,7 +54,7 @@ subs, labels = [], []
 for row in seg.itertuples():
     reg = Registration(row.segment, row.flip, row.roll_deg, row.shift_A, row.score)
     pos, rots, s = lattice_particles(fils[row.filament], reg, fam.segment_length, 1.0, (P, om), fam.plus_at_minus_z,
-                                     centre_only=True)
+                                     center_only=True)
     subs.append(extract(clean[row.filament], 5.0, np.zeros(3), pos[0], rots[0], (200.0, 80.0, 80.0)))
     labels.append(f"{row.filament}/{row.segment}{'F' if row.flip else ''}")
 M = np.array([[T._cc(a, b) for b in subs] for a in subs])

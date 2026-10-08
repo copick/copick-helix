@@ -1,8 +1,8 @@
 """Band-limited helical terms: polarity and registration of thin helical filaments (actin) from per-segment
 reconstructions (the "term route").
 
-Each segment is a straight box ``vol[z = t, y = e2, x = e1]`` with the filament axis near the in-plane centre index
-and the segment centre at index ``n // 2`` along z (a local reconstruction from the tilt series, or a slice of a
+Each segment is a straight box ``vol[z = t, y = e2, x = e1]`` with the filament axis near the in-plane center index
+and the segment center at index ``n // 2`` along z (a local reconstruction from the tilt series, or a slice of a
 straightened tomogram). It is reduced to the coefficients of the family's strongest helical terms T = (n, m):
 
     c_T(R) = mean over the measured Phi of F(R, Phi, Z_T) exp(-i n Phi),   Z_T = (m - n twist / 360) / rise,
@@ -12,8 +12,8 @@ atomic model on the same grid (where the signal is expected: an inductive bias, 
 refined per segment on the low band only, so the higher bands take no part in choosing it. Terms whose layer line
 lies within ``zmin`` / L of the equator are dropped (in a segment of length L they share the equator's main lobe).
 
-Transformations, with the segment centre as origin: rotation by phi0 about z: c -> c exp(-i n phi0); shift by z0:
-c -> c exp(-2 pi i Z z0); polarity flip (180 deg about x through the centre): c -> (-1)^n conj(c).
+Transformations, with the segment center as origin: rotation by phi0 about z: c -> c exp(-i n phi0); shift by z0:
+c -> c exp(-2 pi i Z z0); polarity flip (180 deg about x through the center): c -> (-1)^n conj(c).
 
 Polarity comes from a reference built from the data in term space (no model). From random polarity starts, every
 segment is aligned (phi0 over 360 deg, z0 over one rise, since the helix makes (phi0, z0) and (phi0 + twist, z0 + rise)
@@ -88,7 +88,7 @@ class SegmentRef:
         return v, float(m["step_A"]), np.asarray(m["beam"], float), np.asarray(m["tilt_axis"], float)
 
 
-def phase_randomise(v: np.ndarray, rng) -> np.ndarray:
+def phase_randomize(v: np.ndarray, rng) -> np.ndarray:
     """Same power spectrum, random phases: a segment with no helical order (the decoy)."""
     F = np.fft.rfftn(v)
     ph = np.exp(1j * np.angle(np.fft.rfftn(rng.normal(size=v.shape))))
@@ -123,7 +123,7 @@ class Window:
         iy, ix = (self.ky - kf[0]) / d, (self.kx - kf[0]) / d
         self.G = np.stack([map_coordinates(f.real, [iy, ix], order=1) + 1j * map_coordinates(f.imag, [iy, ix], order=1)
                            for f in F]).astype(np.complex64)
-        self.s = (np.arange(n) - n // 2) * step  # segment centre at index n // 2 (the box centre)
+        self.s = (np.arange(n) - n // 2) * step  # segment center at index n // 2 (the box center)
         self._masks = {}
 
     def mask(self, Z):
@@ -164,7 +164,7 @@ def z_of(n, m, rise, twist):
 
 
 def refine_offset(win: Window, lo_terms, max_shift, shift_step=2.0, band=(300.0, 40.0)):
-    """Axis offset (dx along e1, dy along e2) A maximising the low-band power of the low-band terms' own orders."""
+    """Axis offset (dx along e1, dy along e2) A maximizing the low-band power of the low-band terms' own orders."""
     rows = win.band_rows(band)
     planes = [(n, win.plane(Z, rows), win.mask(Z)[rows]) for n, Z in lo_terms]
     if not planes:
@@ -251,7 +251,7 @@ def enrichment_sums(win: Window, terms_nz, bands, ph=1.0):
 
 
 def flip(C, n):
-    """180 deg about x through the segment centre."""
+    """180 deg about x through the segment center."""
     return np.where((n % 2)[:, None] == 0, 1.0, -1.0) * np.conj(C) if C.ndim == 2 else \
         np.where((n % 2)[None, :, None] == 0, 1.0, -1.0) * np.conj(C)
 
@@ -265,7 +265,7 @@ class Aligner:
         self.Ez = np.exp(2j * np.pi * np.outer(Z, self.zs))  # (K, nz)
 
     def best(self, ref, C):
-        """ref (P, K, R) or (K, R); C (P, K, R): best normalised score, phi0, z0 per particle."""
+        """ref (P, K, R) or (K, R); C (P, K, R): best normalized score, phi0, z0 per particle."""
         ref = np.broadcast_to(ref, C.shape)
         ok = np.isfinite(ref) & np.isfinite(C)
         cross = np.where(ok, np.conj(ref) * C, 0).sum(-1)  # (P, K)
@@ -431,7 +431,7 @@ def _filament_job(args):
             mwin.beam, mwin.tilt, mwin._masks = np.asarray(beam, float), np.asarray(tilt, float), {}
             MC = coefficients(mwin, keys, Zs, cfg.bands, 1.0, cfg.min_count)
         for decoy in ((False, True) if cfg.decoys else (False,)):
-            v = phase_randomise(vol, rng) if decoy else vol
+            v = phase_randomize(vol, rng) if decoy else vol
             win = Window(v, step, cfg.r_out, beam, tilt, cfg.half_wedge)
             lo = [(n, Z) for n, Z in lo_nz if abs(Z) * win.L >= cfg.zmin]
             dx, dy = refine_offset(win, lo, cfg.max_shift, cfg.shift_step, cfg.bands["lo"])
@@ -503,7 +503,7 @@ def fit_axial_scale(refs, lo_terms, rise0, twist0, cfg: TermConfig, workers=1):
     return float(rise0 / scale), peaks
 
 
-def analyse(segments: dict, family, cfg: TermConfig | None = None, workers: int = 1, label: bool = True,
+def analyze(segments: dict, family, cfg: TermConfig | None = None, workers: int = 1, label: bool = True,
             rise: float | None = None, log=print) -> TermResult:
     """The term route over a dataset. ``segments``: {filament name: [SegmentRef, ...]}, one grid for all segments
     (step, box). ``rise``: skip the fit and use this rise (A)."""
@@ -603,7 +603,7 @@ def _dataset_stats(t, cfg):
 def bundle_pairs(geometry: dict, calls: dict, names, max_dist=150.0, min_cos=0.9, min_overlap=200.0):
     """Pairs of filaments in one run running side by side (within ``max_dist`` A over at least ``min_overlap`` A,
     |cos| >= min_cos): (a, b, same_polarity) with the pair's relative direction taken into account.
-    ``geometry``: name -> (run, centres (n, 3), tangents (n, 3)) sampled about every 50 A; calls: name -> +-1."""
+    ``geometry``: name -> (run, centers (n, 3), tangents (n, 3)) sampled about every 50 A; calls: name -> +-1."""
     from scipy.spatial import cKDTree
 
     out = []
