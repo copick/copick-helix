@@ -42,38 +42,77 @@ def measure_parameters(family: Family, filaments: dict[str, Straightened]) -> pd
     return t
 
 
-def run_invariants(family: Family, filaments: dict[str, Straightened], params: pd.DataFrame, model=None,
-                half_wedge: float = 44.0):
-    cfg = invariants.InvariantConfig(terms=family.terms, triples=family.triples, r_out=family.r_out, r_mask=family.r_mask,
-                                     half_wedge=half_wedge, plane_tol_frac=family.plane_tol_bins)
+def run_invariants(
+    family: Family,
+    filaments: dict[str, Straightened],
+    params: pd.DataFrame,
+    model=None,
+    half_wedge: float = 44.0,
+):
+    cfg = invariants.InvariantConfig(
+        terms=family.terms,
+        triples=family.triples,
+        r_out=family.r_out,
+        r_mask=family.r_mask,
+        half_wedge=half_wedge,
+        plane_tol_frac=family.plane_tol_bins,
+    )
     fits = {}
     planes = None
     for name, st in filaments.items():
         if planes is None:
             planes = PolarPlanes(st.step, st.vol.shape[1], cfg.r_band, cfg.r_mask)
         sym = family.symmetry(**{k: params.loc[name, k] for k in family.reference_params})
-        fits[name] = [invariants.fit_segment(st.vol[sl] - st.vol[sl].mean(), _segment_geoms(st, sl), st.step, sym, cfg, planes)
-                      for _, sl in st.segments(family.segment_length)]
+        fits[name] = [
+            invariants.fit_segment(st.vol[sl] - st.vol[sl].mean(), _segment_geoms(st, sl), st.step, sym, cfg, planes)
+            for _, sl in st.segments(family.segment_length)
+        ]
     fits = {k: v for k, v in fits.items() if v}
     model_fits = None
     if model is not None:
         mvol, mparams = model
-        mcfg = invariants.InvariantConfig(terms=family.terms, triples=family.triples, r_out=family.r_out,
-                                          r_mask=family.r_mask, half_wedge=90.0, plane_tol_frac=family.plane_tol_bins)
-        model_fits = [invariants.fit_segment(mvol - mvol.mean(), SegmentGeometry(np.array([1.0, 0, 0]), np.array([0, 0, 1.0])),
-                                          next(iter(filaments.values())).step, family.symmetry(**mparams), mcfg, planes)]
+        mcfg = invariants.InvariantConfig(
+            terms=family.terms,
+            triples=family.triples,
+            r_out=family.r_out,
+            r_mask=family.r_mask,
+            half_wedge=90.0,
+            plane_tol_frac=family.plane_tol_bins,
+        )
+        model_fits = [
+            invariants.fit_segment(
+                mvol - mvol.mean(),
+                SegmentGeometry(np.array([1.0, 0, 0]), np.array([0, 0, 1.0])),
+                next(iter(filaments.values())).step,
+                family.symmetry(**mparams),
+                mcfg,
+                planes,
+            ),
+        ]
     return invariants.assign(fits, cfg, model_fits)
 
 
-def run_iterative(family: Family, filaments: dict[str, Straightened], params: pd.DataFrame, model=None,
-                  random_starts: int = 20, seed_starts: int = 5, strength_draws: int = 8):
+def run_iterative(
+    family: Family,
+    filaments: dict[str, Straightened],
+    params: pd.DataFrame,
+    model=None,
+    random_starts: int = 20,
+    seed_starts: int = 5,
+    strength_draws: int = 8,
+):
     """Stretch each filament to the family's common reference geometry, then the data-built reference.
 
     The full polarity search (many random and seeded starts, plus the random-polarity strength baseline) is what makes
     a call trustworthy; for registration alone (e.g. a lattice too weak to call polarity) a few seeded starts and no
     strength baseline suffice: ``random_starts=0, seed_starts=3, strength_draws=0``."""
-    cfg = iterative.IterativeConfig(rmin=family.cyl_band[0], rmax=family.cyl_band[1], random_starts=random_starts,
-                                    seed_starts=seed_starts, support_z_bins=family.support_z_bins)
+    cfg = iterative.IterativeConfig(
+        rmin=family.cyl_band[0],
+        rmax=family.cyl_band[1],
+        random_starts=random_starts,
+        seed_starts=seed_starts,
+        support_z_bins=family.support_z_bins,
+    )
     cfg.support = family.support(z_max=cfg.zmax, n_max=cfg.nmax)
     gby = {}
     r = n = Z = None
@@ -83,22 +122,34 @@ def run_iterative(family: Family, filaments: dict[str, Straightened], params: pd
         gl = []
         for k in range(v.shape[0] // nseg):
             sl = slice(k * nseg, (k + 1) * nseg)
-            r, n, Z, g = iterative.segment_g(v[sl], SegmentGeometry(np.median(beam[sl], 0), np.median(tilt[sl], 0)),
-                                             st.step, cfg)
+            r, n, Z, g = iterative.segment_g(
+                v[sl],
+                SegmentGeometry(np.median(beam[sl], 0), np.median(tilt[sl], 0)),
+                st.step,
+                cfg,
+            )
             gl.append(g)
         if gl:
             gby[name] = np.stack(gl)
     gm = None
     if model is not None:
         mvol, _ = model
-        _, _, _, gm = iterative.segment_g(mvol, SegmentGeometry(np.array([1.0, 0, 0]), np.array([0, 0, 1.0])),
-                                          next(iter(filaments.values())).step, iterative.IterativeConfig(
-                                              rmin=family.cyl_band[0], rmax=family.cyl_band[1], half_wedge=90.0))
+        _, _, _, gm = iterative.segment_g(
+            mvol,
+            SegmentGeometry(np.array([1.0, 0, 0]), np.array([0, 0, 1.0])),
+            next(iter(filaments.values())).step,
+            iterative.IterativeConfig(rmin=family.cyl_band[0], rmax=family.cyl_band[1], half_wedge=90.0),
+        )
     return iterative.assign(gby, r, n, Z, cfg, model_plus_g=gm, strength_draws=strength_draws)
 
 
-def lattice_gate(family: Family, filaments: dict[str, Straightened], params: pd.DataFrame, rng_seed: int = 0,
-                 min_ratio: float = 2.0) -> dict:
+def lattice_gate(
+    family: Family,
+    filaments: dict[str, Straightened],
+    params: pd.DataFrame,
+    rng_seed: int = 0,
+    min_ratio: float = 2.0,
+) -> dict:
     """Is the family's helical lattice detectable at all? Pooled power at each phase-invariant term against the same
     for phase-scrambled copies of the segments (identical power spectra, no helical order).
 
@@ -118,8 +169,10 @@ def lattice_gate(family: Family, filaments: dict[str, Straightened], params: pd.
             seg = v[sl] - v[sl].mean()
             geom = SegmentGeometry(np.median(beam[sl], 0), np.median(tilt[sl], 0))
             Fs = np.fft.rfftn(seg)
-            decoy = np.fft.irfftn(np.abs(Fs) * np.exp(1j * np.angle(np.fft.rfftn(rng.normal(size=seg.shape)))),
-                                  s=seg.shape).astype(np.float32)
+            decoy = np.fft.irfftn(
+                np.abs(Fs) * np.exp(1j * np.angle(np.fft.rfftn(rng.normal(size=seg.shape)))),
+                s=seg.shape,
+            ).astype(np.float32)
             for key, vol in (("data", seg), ("decoy", decoy)):
                 r, n, Z, g = iterative.segment_g(vol, geom, st.step, cfg)
                 p = np.tensordot(r, np.abs(g) ** 2, axes=(0, 0))
@@ -131,8 +184,13 @@ def lattice_gate(family: Family, filaments: dict[str, Straightened], params: pd.
     return {"terms": terms, "detected": bool(any(a > min_ratio * max(b, 1.0) for a, b in terms.values()))}
 
 
-def average_reference(family: Family, filaments: dict[str, Straightened], params: pd.DataFrame,
-                      res: iterative.IterativeResult, seeds: set | None = None) -> np.ndarray:
+def average_reference(
+    family: Family,
+    filaments: dict[str, Straightened],
+    params: pd.DataFrame,
+    res: iterative.IterativeResult,
+    seeds: set | None = None,
+) -> np.ndarray:
     """Fast average of the registration particles (one per segment), extracted on each filament's reference grid in
     the exported frame (+Z towards the plus end): an initial model consistent with the registration picks.
     ``seeds``: restrict to these filaments."""
@@ -156,8 +214,13 @@ def average_reference(family: Family, filaments: dict[str, Straightened], params
     return acc / max(n, 1)
 
 
-def registration_particles(family: Family, filaments: dict[str, Straightened], params: pd.DataFrame,
-                           res: iterative.IterativeResult, every: int | None = None) -> dict:
+def registration_particles(
+    family: Family,
+    filaments: dict[str, Straightened],
+    params: pd.DataFrame,
+    res: iterative.IterativeResult,
+    every: int | None = None,
+) -> dict:
     """Per filament: (positions (n, 3) A, rotations (n, 3, 3), scores (n,), segment (n,)) in tomogram coordinates.
     One particle per segment (the lattice point nearest its center), or with ``every`` every n-th lattice point of
     each segment (dense sampling for averaging)."""
@@ -171,8 +234,16 @@ def registration_particles(family: Family, filaments: dict[str, Straightened], p
         P, R, S, G = [], [], [], []
         for row in res.segments[res.segments.filament == name].itertuples():
             reg = Registration(row.segment, row.flip, row.roll_deg, row.shift_A, row.score)
-            pos, rots, _ = lattice_particles(st, reg, family.segment_length, factor, screw, family.plus_at_minus_z,
-                                             center_only=every is None, every=every or 1)
+            pos, rots, _ = lattice_particles(
+                st,
+                reg,
+                family.segment_length,
+                factor,
+                screw,
+                family.plus_at_minus_z,
+                center_only=every is None,
+                every=every or 1,
+            )
             P.append(pos)
             R.append(rots)
             S.append(np.full(len(pos), row.score))
@@ -223,8 +294,16 @@ def term_segments(filaments: dict[str, Straightened], segment_length: float) -> 
     for name, st in filaments.items():
         refs = []
         for k, sl in st.segments(segment_length):
-            refs.append(SegmentRef(name, k, vol=st.vol[sl], step=st.step, beam=np.median(st.beam_local[sl], 0),
-                                   tilt=np.median(st.tilt_local[sl], 0)))
+            refs.append(
+                SegmentRef(
+                    name,
+                    k,
+                    vol=st.vol[sl],
+                    step=st.step,
+                    beam=np.median(st.beam_local[sl], 0),
+                    tilt=np.median(st.tilt_local[sl], 0),
+                ),
+            )
         if refs:
             out[name] = refs
     return out
@@ -234,8 +313,10 @@ def _term_regs(res, name):
     from .registration import Registration
 
     for row in res.segments[res.segments.filament == name].itertuples():
-        yield (Registration(int(row.segment), bool(row.flip), float(row.roll_deg), float(row.shift_A), float(row.score)),
-               (float(row.offset_e1_A), float(row.offset_e2_A)))
+        yield (
+            Registration(int(row.segment), bool(row.flip), float(row.roll_deg), float(row.shift_A), float(row.score)),
+            (float(row.offset_e1_A), float(row.offset_e2_A)),
+        )
 
 
 def term_center_lines(filaments: dict[str, Straightened], res, segment_length: float) -> dict:
@@ -258,8 +339,13 @@ def term_center_lines(filaments: dict[str, Straightened], res, segment_length: f
     return out
 
 
-def term_registration_particles(family: Family, filaments: dict[str, Straightened], res, segment_length: float,
-                                every: int | None = None) -> dict:
+def term_registration_particles(
+    family: Family,
+    filaments: dict[str, Straightened],
+    res,
+    segment_length: float,
+    every: int | None = None,
+) -> dict:
     """As ``registration_particles``, for the term route: per filament (positions, rotations, scores, segment).
 
     Positions follow ``term_center_lines`` (the segment offsets interpolated along the filament), so every pick lies
@@ -276,10 +362,19 @@ def term_registration_particles(family: Family, filaments: dict[str, Straightene
         n = int(round(segment_length / st.step))
         on_line = dataclasses.replace(st, centers=lines[name]) if name in lines else st
         P, R, S, G = [], [], [], []
-        for reg, off in _term_regs(res, name):
+        for reg, _off in _term_regs(res, name):
             s_center = (reg.segment * n + n // 2) * st.step
-            pos, rots, _ = term_particles(on_line, s_center, reg, (0.0, 0.0), screw, family.plus_at_minus_z,
-                                          segment_length / 2, every=every or 1, center_only=every is None)
+            pos, rots, _ = term_particles(
+                on_line,
+                s_center,
+                reg,
+                (0.0, 0.0),
+                screw,
+                family.plus_at_minus_z,
+                segment_length / 2,
+                every=every or 1,
+                center_only=every is None,
+            )
             P.append(pos)
             R.append(rots)
             S.append(np.full(len(pos), reg.score))
@@ -310,10 +405,24 @@ def term_average(family: Family, segments: dict, res, seeds: set | None = None, 
             n_s, n_in = vol.shape[0], vol.shape[1]
             grid = local_frames(n_s, step, n_in)
             half_w = 0.9 * (n_in // 2) * step
-            pos, rots, _ = term_particles(grid, (n_s // 2) * step, reg, off, screw, family.plus_at_minus_z,
-                                          n_s * step / 2, center_only=True)
-            sub = extract(vol - vol.mean(), step, np.zeros(3), pos[0], rots[0],
-                          (min(half_axial, 0.45 * n_s * step), half_w, half_w))
+            pos, rots, _ = term_particles(
+                grid,
+                (n_s // 2) * step,
+                reg,
+                off,
+                screw,
+                family.plus_at_minus_z,
+                n_s * step / 2,
+                center_only=True,
+            )
+            sub = extract(
+                vol - vol.mean(),
+                step,
+                np.zeros(3),
+                pos[0],
+                rots[0],
+                (min(half_axial, 0.45 * n_s * step), half_w, half_w),
+            )
             acc = sub if acc is None else acc + sub
             n += 1
     return (acc / max(n, 1) if acc is not None else None), step

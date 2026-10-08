@@ -8,7 +8,8 @@ import os
 
 import numpy as np
 import pytest
-from scipy.ndimage import rotate, shift as nd_shift
+from scipy.ndimage import rotate
+from scipy.ndimage import shift as nd_shift
 
 from copick_helix import bands
 from copick_helix.families import get_family
@@ -27,9 +28,19 @@ def _straightened(vol, beam, tilt):
     n = vol.shape[0]
     c = np.stack([np.full(n, (N_IN // 2) * STEP), np.full(n, (N_IN // 2) * STEP), np.arange(n) * STEP], 1)
     eye = np.eye(3)
-    return Straightened(vol=vol, step=STEP, centers=c, t=np.tile(eye[2], (n, 1)), e1=np.tile(eye[0], (n, 1)),
-                        e2=np.tile(eye[1], (n, 1)), beam_local=np.tile(beam, (n, 1)), tilt_local=np.tile(tilt, (n, 1)),
-                        protein_sign=1.0, eq_coverage_deg=100.0, geometry=TiltGeometry())
+    return Straightened(
+        vol=vol,
+        step=STEP,
+        centers=c,
+        t=np.tile(eye[2], (n, 1)),
+        e1=np.tile(eye[0], (n, 1)),
+        e2=np.tile(eye[1], (n, 1)),
+        beam_local=np.tile(beam, (n, 1)),
+        tilt_local=np.tile(tilt, (n, 1)),
+        protein_sign=1.0,
+        eq_coverage_deg=100.0,
+        geometry=TiltGeometry(),
+    )
 
 
 def _cc(a, b):
@@ -93,16 +104,27 @@ def test_registered_particles_agree_and_conventions_matter(data):
             f, r, s, o = mod(bool(row.flip), row.roll_deg, row.shift_A, (row.offset_e1_A, row.offset_e2_A))
             reg = Registration(int(row.segment), f, r, s, row.score)
             s_c = (reg.segment * n + n // 2) * st.step
-            pos, rots, s_arc = term_particles(st, s_c, reg, o, (screw[0], om_sign * screw[1]), fam.plus_at_minus_z,
-                                              L / 2)
+            pos, rots, s_arc = term_particles(
+                st,
+                s_c,
+                reg,
+                o,
+                (screw[0], om_sign * screw[1]),
+                fam.plus_at_minus_z,
+                L / 2,
+            )
             k = int(np.argmin(np.abs(s_arc - (s_c + 85.0))))  # about three subunits off-center: the screw acts
             subs.append(extract(clean[row.filament], STEP, np.zeros(3), pos[k], rots[k], (150.0, 50.0, 50.0)))
         return float(np.median([_cc(subs[i], subs[j]) for i in range(len(subs)) for j in range(i + 1, len(subs))]))
 
     good = median_cc()
     assert good > 0.9, good
-    for mod, om in ((lambda f, r, s, o: (f, -r, s, o), 1.0), (lambda f, r, s, o: (False, r, s, o), 1.0),
-                    (lambda f, r, s, o: (f, r, -s, o), 1.0), (lambda f, r, s, o: (f, r, s, o), -1.0)):
+    for mod, om in (
+        (lambda f, r, s, o: (f, -r, s, o), 1.0),
+        (lambda f, r, s, o: (False, r, s, o), 1.0),
+        (lambda f, r, s, o: (f, r, -s, o), 1.0),
+        (lambda f, r, s, o: (f, r, s, o), -1.0),
+    ):
         assert median_cc(mod, om) < good - 0.15
     reg = term_registration_particles(fam, fils, res, L)
     assert all(len(v[0]) == len(res.segments[res.segments.filament == k]) for k, v in reg.items())

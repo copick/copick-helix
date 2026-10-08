@@ -15,8 +15,14 @@ import numpy as np
 from .fourier import bessel_coefficients, cylindrical, measured_mask_3d
 
 
-def axial_repeat(vol: np.ndarray, step: float, k_range: tuple[float, float], half_width_beam: float = 150.0,
-                 k_perp_max: float = 0.02, npad: int = 2**15) -> tuple[float, float]:
+def axial_repeat(
+    vol: np.ndarray,
+    step: float,
+    k_range: tuple[float, float],
+    half_width_beam: float = 150.0,
+    k_perp_max: float = 0.02,
+    npad: int = 2**15,
+) -> tuple[float, float]:
     """(period A, peak SNR) of the strongest layer line with axial frequency in k_range (1/A).
 
     vol[s, e2, e1], protein positive. The side view sums |e1| <= half_width_beam; power is summed over
@@ -44,8 +50,15 @@ def microtubule_repeat(vol: np.ndarray, step: float) -> tuple[float, float]:
     return axial_repeat(vol, step, (0.023, 0.026))
 
 
-def equator_count(vol: np.ndarray, step: float, beam, tilt_axis, orders=range(9, 18), wall=(80.0, 145.0),
-                  seg_len: float = 1250.0) -> dict:
+def equator_count(
+    vol: np.ndarray,
+    step: float,
+    beam,
+    tilt_axis,
+    orders=range(9, 18),
+    wall=(80.0, 145.0),
+    seg_len: float = 1250.0,
+) -> dict:
     """Angular power share per order n at the wall near the equator (|Z| <= 1/1500 A), whole filament.
 
     Returns {"n_best": int, "share": {n: fraction}}. vol[s, e2, e1], protein positive; beam / tilt axis in local
@@ -65,8 +78,15 @@ def equator_count(vol: np.ndarray, step: float, beam, tilt_axis, orders=range(9,
     return {"n_best": int(max(pw, key=pw.get)), "share": {k: v / tot for k, v in pw.items()}}
 
 
-def layer_scan(vol: np.ndarray, step: float, order: int, z_pred: float, frac: float = 0.15, r_max: float = 80.0,
-               n_z: int = 241) -> tuple[np.ndarray, np.ndarray]:
+def layer_scan(
+    vol: np.ndarray,
+    step: float,
+    order: int,
+    z_pred: float,
+    frac: float = 0.15,
+    r_max: float = 80.0,
+    n_z: int = 241,
+) -> tuple[np.ndarray, np.ndarray]:
     """Power of Bessel order ``order`` against Z in [z_pred (1 - frac), z_pred (1 + frac)] for a whole straightened
     filament (exact DFT along z, Hann window, radially weighted). Returns (Z, P)."""
     c = vol.shape[1] // 2
@@ -80,15 +100,22 @@ def layer_scan(vol: np.ndarray, step: float, order: int, z_pred: float, frac: fl
     return Zs, P
 
 
-def rise_twist_from_lines(vol: np.ndarray, step: float, symmetry, line_a, line_b, r_max: float = 80.0,
-                          frac: float = 0.15) -> dict:
+def rise_twist_from_lines(
+    vol: np.ndarray,
+    step: float,
+    symmetry,
+    line_a,
+    line_b,
+    r_max: float = 80.0,
+    frac: float = 0.15,
+) -> dict:
     """Rise and twist of a helical filament from the measured positions of two layer lines (Terms with different n).
 
     With Z(n, m) = (m - n * twist / 360) / rise, two lines give a 2 x 2 linear system in (1/rise, twist/360/rise).
     The predicted positions come from ``symmetry`` (the family's prior). Also returns each line's peak / median power
     over the scan (a per-filament lattice signal-to-noise)."""
     out, zs = {}, []
-    for key, t in (("a", line_a), ("b", line_b)):
+    for _key, t in (("a", line_a), ("b", line_b)):
         Z, P = layer_scan(vol, step, t.n, symmetry.Z(t), frac=frac, r_max=r_max)
         zs.append(Z[np.argmax(P)])
         out[f"snr_{t.n}_{t.m}"] = float(P.max() / np.median(P))

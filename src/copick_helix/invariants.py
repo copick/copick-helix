@@ -43,8 +43,15 @@ class InvariantConfig:
     plane_tol_frac: float = 0.5  # orders on the same plane: |dZ| <= plane_tol_frac / segment length
 
 
-def fit_plane(F: np.ndarray, M: np.ndarray, R: np.ndarray, orders: list[int], r_out: float, phi: np.ndarray,
-              ridge: float) -> dict[int, np.ndarray]:
+def fit_plane(
+    F: np.ndarray,
+    M: np.ndarray,
+    R: np.ndarray,
+    orders: list[int],
+    r_out: float,
+    phi: np.ndarray,
+    ridge: float,
+) -> dict[int, np.ndarray]:
     """Least squares per R of F(R, Phi_measured) ~ sum_n c_n(R) exp(i n Phi), orders capped by n_cap(R)."""
     coefs: dict[int, np.ndarray] = {}
     for i, Ri in enumerate(R):
@@ -67,8 +74,14 @@ class SegmentFit:
     coverage: dict[float, float] = field(default_factory=dict)  # measured fraction per plane Z
 
 
-def fit_segment(seg: np.ndarray, geom: SegmentGeometry, step: float, sym: HelicalSymmetry, cfg: InvariantConfig,
-                planes: PolarPlanes | None = None) -> SegmentFit:
+def fit_segment(
+    seg: np.ndarray,
+    geom: SegmentGeometry,
+    step: float,
+    sym: HelicalSymmetry,
+    cfg: InvariantConfig,
+    planes: PolarPlanes | None = None,
+) -> SegmentFit:
     """Fit the configured terms of one segment (seg[z, y, x], protein positive, axis at the in-plane center)."""
     if planes is None:
         planes = PolarPlanes(step, seg.shape[1], cfg.r_band, cfg.r_mask)
@@ -143,8 +156,11 @@ def feature_vector(inv: dict, keys: list, weights: dict[Term, np.ndarray], n_r: 
     return np.concatenate(parts)
 
 
-def assign(fits_by_filament: dict[str, list[SegmentFit]], cfg: InvariantConfig,
-           model_fits: list[SegmentFit] | None = None) -> tuple[pd.DataFrame, dict]:
+def assign(
+    fits_by_filament: dict[str, list[SegmentFit]],
+    cfg: InvariantConfig,
+    model_fits: list[SegmentFit] | None = None,
+) -> tuple[pd.DataFrame, dict]:
     """Relative polarity of all filaments (and an absolute label if model fits are given).
 
     Returns a per-filament table (group, leave-one-out projection, per-segment and odd/even agreement, call) and a
@@ -187,11 +203,24 @@ def assign(fits_by_filament: dict[str, list[SegmentFit]], cfg: InvariantConfig,
                 xh = feature_vector(invariants(sub, cfg, rstar), keys, weights, n_r)
                 halves.append(np.sign(xh @ un) if np.linalg.norm(xh) > 0 else 0.0)
         call = None if sign_model is None else ("plus" if grp * sign_model > 0 else "minus")
-        rows.append({"filament": n, "group": grp, "loo_projection": proj, "eigvec": float(v[i]),
-                     "segments": len(fits_by_filament[n]),
-                     "seg_agree": float((seg_signs == grp).mean()) if len(seg_signs) else np.nan,
-                     "halves_agree": bool(len(halves) == 2 and halves[0] == halves[1] == grp), "call": call})
-    summary = {"eigenvalues": w[::-1][:5].tolist(), "eigen_gap": float(w[-1] / max(w[-2], 1e-12)),
-               "model_sign": sign_model, "model_cos": cos_model, "segments": pd.DataFrame(seg_rows),
-               "rstar_R": {str(t): float(1.0) for t in rstar}}
+        rows.append(
+            {
+                "filament": n,
+                "group": grp,
+                "loo_projection": proj,
+                "eigvec": float(v[i]),
+                "segments": len(fits_by_filament[n]),
+                "seg_agree": float((seg_signs == grp).mean()) if len(seg_signs) else np.nan,
+                "halves_agree": bool(len(halves) == 2 and halves[0] == halves[1] == grp),
+                "call": call,
+            },
+        )
+    summary = {
+        "eigenvalues": w[::-1][:5].tolist(),
+        "eigen_gap": float(w[-1] / max(w[-2], 1e-12)),
+        "model_sign": sign_model,
+        "model_cos": cos_model,
+        "segments": pd.DataFrame(seg_rows),
+        "rstar_R": {str(t): float(1.0) for t in rstar},
+    }
     return pd.DataFrame(rows), summary

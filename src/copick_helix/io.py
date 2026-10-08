@@ -14,7 +14,6 @@ import numpy as np
 import zarr
 
 
-
 def open_project(config: str):
     import copick
 
@@ -44,8 +43,16 @@ def tomogram_extent(root, run_name: str, voxel_spacing: float, tomo_type: str):
     return shape[2] * voxel_spacing, shape[1] * voxel_spacing, shape[0] * voxel_spacing
 
 
-def write_centerlines(root, run_name: str, object_name: str, user_id: str, session_id: str, items: list[dict],
-                      control_spacing: float = 100.0, step: float = 10.0):
+def write_centerlines(
+    root,
+    run_name: str,
+    object_name: str,
+    user_id: str,
+    session_id: str,
+    items: list[dict],
+    control_spacing: float = 100.0,
+    step: float = 10.0,
+):
     """Filaments as Catmull-Rom curves through the recentered center line (control points every ``control_spacing``
     A, points regenerated every ``step`` A), so every copick viewer shows the line the analysis used.
 
@@ -63,23 +70,45 @@ def write_centerlines(root, run_name: str, object_name: str, user_id: str, sessi
         seg = np.r_[0, np.cumsum(np.linalg.norm(np.diff(c, axis=0), axis=1))]
         marks = np.unique(np.r_[np.arange(0, seg[-1], control_spacing), seg[-1]])
         ctrl = np.stack([np.interp(marks, seg, c[:, d]) for d in range(3)], 1)
-        fils.append(CopickFilament.from_control_points(int(it["instance_id"]), ctrl.tolist(), step=step,
-                                                       kind="catmull-rom", alpha=0.5, polarity_known=bool(it["known"]),
-                                                       radius=it.get("radius"), metadata=it.get("metadata", {})))
+        fils.append(
+            CopickFilament.from_control_points(
+                int(it["instance_id"]),
+                ctrl.tolist(),
+                step=step,
+                kind="catmull-rom",
+                alpha=0.5,
+                polarity_known=bool(it["known"]),
+                radius=it.get("radius"),
+                metadata=it.get("metadata", {}),
+            ),
+        )
     out.filaments = fils
     out.store()
     return out
 
 
-def write_particles(root, run_name: str, object_name: str, user_id: str, session_id: str, positions, rotations,
-                    instance_ids, scores):
+def write_particles(
+    root,
+    run_name: str,
+    object_name: str,
+    user_id: str,
+    session_id: str,
+    positions,
+    rotations,
+    instance_ids,
+    scores,
+):
     """copick picks with full transforms (rotation maps the particle's reference frame onto the tomogram; +Z towards
     the plus end), instance_id = filament ID."""
     run = root.get_run(run_name)
     picks = run.new_picks(object_name, session_id, user_id, exist_ok=True)
     T = np.tile(np.eye(4), (len(positions), 1, 1))
     T[:, :3, :3] = rotations
-    picks.from_numpy(np.asarray(positions, float), T, instance_ids=np.asarray(instance_ids, int),
-                     scores=np.asarray(scores, float))
+    picks.from_numpy(
+        np.asarray(positions, float),
+        T,
+        instance_ids=np.asarray(instance_ids, int),
+        scores=np.asarray(scores, float),
+    )
     picks.store()
     return picks

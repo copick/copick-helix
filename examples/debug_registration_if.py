@@ -31,8 +31,14 @@ for i in range(6):
     fils[f"f{i}"] = T._straightened(noisy, beam, tilt)
     truth[f"f{i}"] = (th, sh * 5.0, bool(i % 2))
 params = pd.DataFrame({"rise": 42.461, "twist": 73.7308}, index=list(fils))
-res = pipeline.run_iterative(fam, fils, params, model=(on_grid(*m.atoms(1250.0), 5.0, 81, 1250.0), {}),
-                             random_starts=4, seed_starts=2)
+res = pipeline.run_iterative(
+    fam,
+    fils,
+    params,
+    model=(on_grid(*m.atoms(1250.0), 5.0, 81, 1250.0), {}),
+    random_starts=4,
+    seed_starts=2,
+)
 P, om = 42.461, 73.7308
 seg = res.segments
 print(seg.round(2).to_string(index=False))
@@ -40,8 +46,10 @@ print(seg.round(2).to_string(index=False))
 for name, (th, sh, fl) in truth.items():
     rows = seg[seg.filament == name]
     ph = ((rows.roll_deg - rows.shift_A * om / P) % 360).round(1).tolist()
-    print(f"{name}: true rotation {th:6.1f}, shift {sh:5.1f}, flip {fl} | estimated helical phase per segment {ph} "
-          f"| segments' shift differences {np.diff(rows.shift_A).round(1).tolist()}")
+    print(
+        f"{name}: true rotation {th:6.1f}, shift {sh:5.1f}, flip {fl} | estimated helical phase per segment {ph} "
+        f"| segments' shift differences {np.diff(rows.shift_A).round(1).tolist()}",
+    )
 
 # pairwise agreement of particles extracted at the registration picks (clean volumes rebuilt from truth)
 from copick_helix.registration import Registration, extract, lattice_particles  # noqa: E402
@@ -53,8 +61,15 @@ for name, (th, sh, fl) in truth.items():
 subs, labels = [], []
 for row in seg.itertuples():
     reg = Registration(row.segment, row.flip, row.roll_deg, row.shift_A, row.score)
-    pos, rots, s = lattice_particles(fils[row.filament], reg, fam.segment_length, 1.0, (P, om), fam.plus_at_minus_z,
-                                     center_only=True)
+    pos, rots, s = lattice_particles(
+        fils[row.filament],
+        reg,
+        fam.segment_length,
+        1.0,
+        (P, om),
+        fam.plus_at_minus_z,
+        center_only=True,
+    )
     subs.append(extract(clean[row.filament], 5.0, np.zeros(3), pos[0], rots[0], (200.0, 80.0, 80.0)))
     labels.append(f"{row.filament}/{row.segment}{'F' if row.flip else ''}")
 M = np.array([[T._cc(a, b) for b in subs] for a in subs])

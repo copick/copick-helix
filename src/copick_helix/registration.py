@@ -43,8 +43,17 @@ class Registration:
     score: float
 
 
-def lattice_particles(st, reg: Registration, segment_length: float, factor: float, screw: tuple[float, float],
-                      plus_at_minus_z: bool, z0: float | None = None, every: int = 1, center_only: bool = False):
+def lattice_particles(
+    st,
+    reg: Registration,
+    segment_length: float,
+    factor: float,
+    screw: tuple[float, float],
+    plus_at_minus_z: bool,
+    z0: float | None = None,
+    every: int = 1,
+    center_only: bool = False,
+):
     """Lattice-registered particles of one segment.
 
     st: Straightened filament (centers, t, e1, e2 at ``st.step``); factor: original / reference axial scale (the
@@ -70,7 +79,7 @@ def lattice_particles(st, reg: Registration, segment_length: float, factor: floa
     js, u = js[order], u[order]
     if center_only:
         i = int(np.argmin(np.abs(u - L / 2)))
-        js, u = js[i:i + 1], u[i:i + 1]
+        js, u = js[i : i + 1], u[i : i + 1]
     elif every > 1:
         js, u = js[::every], u[::every]
     s_ref = reg.segment * L + u
@@ -90,8 +99,15 @@ def lattice_particles(st, reg: Registration, segment_length: float, factor: floa
     return pos, np.array(rots), s
 
 
-def extract(vol: np.ndarray, step: float, origin: np.ndarray, pos: np.ndarray, R: np.ndarray, half: tuple,
-            out_step: float | None = None) -> np.ndarray:
+def extract(
+    vol: np.ndarray,
+    step: float,
+    origin: np.ndarray,
+    pos: np.ndarray,
+    R: np.ndarray,
+    half: tuple,
+    out_step: float | None = None,
+) -> np.ndarray:
     """Subvolume in a particle's reference frame: sample ``vol[z, y, x]`` (voxel ``step``, voxel 0 at ``origin`` A)
     at pos + R q for q on a grid of half-widths ``half`` = (hz, hy, hx) A. Returns [z, y, x]."""
     from scipy.ndimage import map_coordinates
@@ -110,15 +126,31 @@ def local_frames(n_s: int, step: float, n_inplane: int):
     coordinates equal grid coordinates (x = e1, y = e2, z = s; axis at the in-plane center index)."""
     from types import SimpleNamespace
 
-    c = np.stack([np.full(n_s, (n_inplane // 2) * step), np.full(n_s, (n_inplane // 2) * step),
-                  np.arange(n_s) * step], 1)
+    c = np.stack(
+        [np.full(n_s, (n_inplane // 2) * step), np.full(n_s, (n_inplane // 2) * step), np.arange(n_s) * step],
+        1,
+    )
     eye = np.eye(3)
-    return SimpleNamespace(centers=c, step=step, t=np.tile(eye[2], (n_s, 1)), e1=np.tile(eye[0], (n_s, 1)),
-                           e2=np.tile(eye[1], (n_s, 1)))
+    return SimpleNamespace(
+        centers=c,
+        step=step,
+        t=np.tile(eye[2], (n_s, 1)),
+        e1=np.tile(eye[0], (n_s, 1)),
+        e2=np.tile(eye[1], (n_s, 1)),
+    )
 
 
-def term_particles(st, s_center: float, reg: Registration, offset: tuple, screw: tuple[float, float],
-                   plus_at_minus_z: bool, half_length: float, every: int = 1, center_only: bool = False):
+def term_particles(
+    st,
+    s_center: float,
+    reg: Registration,
+    offset: tuple,
+    screw: tuple[float, float],
+    plus_at_minus_z: bool,
+    half_length: float,
+    every: int = 1,
+    center_only: bool = False,
+):
     """Lattice-registered particles of a segment registered in the term route (``bands``), whose coordinates have the
     segment center as origin: a reference point x sits in the segment at
 
@@ -141,7 +173,7 @@ def term_particles(st, s_center: float, reg: Registration, offset: tuple, screw:
     js, y = js[order], y[order]
     if center_only:
         i = int(np.argmin(np.abs(y)))
-        js, y = js[i:i + 1], y[i:i + 1]
+        js, y = js[i : i + 1], y[i : i + 1]
     elif every > 1:
         js, y = js[::every], y[::every]
     s = s_center + y

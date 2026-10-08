@@ -59,8 +59,13 @@ class MicrotubuleLattice:
             return np.array([-self.r0 * dphi, cen[q][2] - cen[p][2]])
 
         b14 = np.mean([step("A", "C"), step("E", "A"), step("B", "D"), step("F", "B")], axis=0)
-        a14 = np.mean([step(p, q) for p, q in (("A", "K"), ("H", "B"), ("C", "L"), ("I", "D"), ("E", "J"), ("G", "F"))],
-                      axis=0) / 2.0
+        a14 = (
+            np.mean(
+                [step(p, q) for p, q in (("A", "K"), ("H", "B"), ("C", "L"), ("I", "D"), ("E", "J"), ("G", "F"))],
+                axis=0,
+            )
+            / 2.0
+        )
         th = float(np.arctan2(a14[0], a14[1]))
         c, s = np.cos(th), np.sin(th)
         to_pf = np.array([[c, -s], [s, c]])
@@ -89,8 +94,13 @@ class MicrotubuleLattice:
         Cu, Cv = N * self.d, N * self.delta0 - S * self.a
         theta = np.arctan2(Cv, Cu)
         L = np.hypot(Cu, Cv)
-        return {"N": N, "S": S, "theta_deg": float(np.degrees(theta)), "radius": float(L / (2 * np.pi)),
-                "seam": bool(S % 2)}
+        return {
+            "N": N,
+            "S": S,
+            "theta_deg": float(np.degrees(theta)),
+            "radius": float(L / (2 * np.pi)),
+            "seam": bool(S % 2),
+        }
 
     def atoms(self, N: int, S: int, length: float, flip: bool = False, z0: float = 0.0):
         g = self.geometry(N, S)
@@ -133,8 +143,12 @@ def density(xyz, w, apix, box_xy, length, sigma=1.5):
     for dz in (0, 1):
         for dy in (0, 1):
             for dx in (0, 1):
-                ww = w * np.where(dx, f[:, 0], 1 - f[:, 0]) * np.where(dy, f[:, 1], 1 - f[:, 1]) * \
-                    np.where(dz, f[:, 2], 1 - f[:, 2])
+                ww = (
+                    w
+                    * np.where(dx, f[:, 0], 1 - f[:, 0])
+                    * np.where(dy, f[:, 1], 1 - f[:, 1])
+                    * np.where(dz, f[:, 2], 1 - f[:, 2])
+                )
                 zi, yi, xi = i0[:, 2] + dz, i0[:, 1] + dy, i0[:, 0] + dx
                 ok = (zi >= 0) & (zi < nz) & (yi >= 0) & (yi < nxy) & (xi >= 0) & (xi < nxy)
                 np.add.at(vol, (zi[ok], yi[ok], xi[ok]), ww[ok])
@@ -185,8 +199,12 @@ class HelicalModel:
 
         best = None
         for sign in (1, -1):
-            res = minimize(lambda p: mismatch(p, sign * abs(twist)), xyz[:, :2].mean(0), method="Nelder-Mead",
-                           options={"xatol": 0.05, "fatol": 1e-3})
+            res = minimize(
+                lambda p, sign=sign: mismatch(p, sign * abs(twist)),
+                xyz[:, :2].mean(0),
+                method="Nelder-Mead",
+                options={"xatol": 0.05, "fatol": 1e-3},
+            )
             if best is None or res.fun < best[2]:
                 best = (res.x, sign * abs(twist), float(res.fun))
         self.axis_xy, self.twist_deposited, self.mismatch = best
@@ -198,8 +216,12 @@ class HelicalModel:
     def atoms(self, length: float, flip: bool = False):
         """Filament along z in [0, length), axis through x = y = 0; flip: 180 deg about x (the other polarity)."""
         n = int(np.ceil(length / self.rise)) + 2
-        xyz = np.vstack([self.unit @ _rotz(np.radians(self.twist_deposited * k)).T + np.array([0, 0, self.rise * k])
-                         for k in range(-1, n)])
+        xyz = np.vstack(
+            [
+                self.unit @ _rotz(np.radians(self.twist_deposited * k)).T + np.array([0, 0, self.rise * k])
+                for k in range(-1, n)
+            ],
+        )
         w = np.tile(self.unit_w, n + 1)
         keep = (xyz[:, 2] >= 0) & (xyz[:, 2] < length)
         xyz, w = xyz[keep], w[keep]
@@ -254,8 +276,9 @@ class HelicalProtomer:
         w_, v = np.linalg.eig(R)
         ax = np.real(v[:, np.argmin(abs(w_ - 1))])
         ax /= np.linalg.norm(ax)
-        ang = np.degrees(np.arctan2(ax @ np.array([R[2, 1] - R[1, 2], R[0, 2] - R[2, 0], R[1, 0] - R[0, 1]]),
-                                    np.trace(R) - 1))
+        ang = np.degrees(
+            np.arctan2(ax @ np.array([R[2, 1] - R[1, 2], R[0, 2] - R[2, 0], R[1, 0] - R[0, 1]]), np.trace(R) - 1),
+        )
         rise = float(t @ ax)
         p = np.linalg.lstsq(np.eye(3) - R, t - rise * ax, rcond=None)[0]
         if rise < 0:  # orient the axis so that the step chain_a -> chain_b rises

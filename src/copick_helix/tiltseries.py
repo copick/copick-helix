@@ -30,8 +30,15 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-OPTICS_COLS = ["rlnOpticsGroup", "rlnOpticsGroupName", "rlnSphericalAberration", "rlnVoltage", "rlnAmplitudeContrast",
-               "rlnTomoTiltSeriesPixelSize", "rlnTomoName"]  # zarr_particle_tools.core.constants.OPTICS_DF_COLUMNS
+OPTICS_COLS = [
+    "rlnOpticsGroup",
+    "rlnOpticsGroupName",
+    "rlnSphericalAberration",
+    "rlnVoltage",
+    "rlnAmplitudeContrast",
+    "rlnTomoTiltSeriesPixelSize",
+    "rlnTomoName",
+]  # zarr_particle_tools.core.constants.OPTICS_DF_COLUMNS
 
 
 @dataclass
@@ -84,8 +91,10 @@ def size_unit(row, extent_A, voxel_A=None, tol=0.03) -> float:
     err = [abs(size * u - extent_A) / extent_A for u in cands]
     i = int(np.argmin(err))
     if err[i] > tol:
-        raise ValueError(f"rlnTomoSizeX {size} matches no pixel size {cands} for a {extent_A:.0f} A tomogram "
-                         f"(best {100 * err[i]:.1f}% off); pass size_unit_A")
+        raise ValueError(
+            f"rlnTomoSizeX {size} matches no pixel size {cands} for a {extent_A:.0f} A tomogram "
+            f"(best {100 * err[i]:.1f}% off); pass size_unit_A",
+        )
     return cands[i]
 
 
@@ -108,11 +117,21 @@ def plan(filaments: dict, segment_length: float, source: TiltSeriesSource, exten
         for k in range(len(st.centers) // n):
             i = k * n + n // 2
             B = np.stack([st.e1[i], st.e2[i], st.t[i]], axis=1)
-            by_tomo.setdefault(str(row.rlnTomoName), []).append({
-                "filament": name, "segment": k, "s_index": int(i), "s_center_A": float(i * st.step),
-                "center_A": st.centers[i].tolist(), "B": B, "centered": (st.centers[i] - center).tolist(),
-                "euler": matrix_euler(B).tolist(), "beam": st.beam_local[i].tolist(), "tilt_axis": st.tilt_local[i].tolist(),
-                "stem": os.path.join(out_dir, name, f"seg{k:03d}")})
+            by_tomo.setdefault(str(row.rlnTomoName), []).append(
+                {
+                    "filament": name,
+                    "segment": k,
+                    "s_index": int(i),
+                    "s_center_A": float(i * st.step),
+                    "center_A": st.centers[i].tolist(),
+                    "B": B,
+                    "centered": (st.centers[i] - center).tolist(),
+                    "euler": matrix_euler(B).tolist(),
+                    "beam": st.beam_local[i].tolist(),
+                    "tilt_axis": st.tilt_local[i].tolist(),
+                    "stem": os.path.join(out_dir, name, f"seg{k:03d}"),
+                },
+            )
     return by_tomo
 
 
@@ -130,25 +149,57 @@ def _reconstruct_tomogram(job):
     project = Path(source.project_dir)
     tomos = read_tomograms(source.tomograms_star)
     row = tomos[tomos.rlnTomoName == tname].iloc[0]
-    parts = pd.DataFrame([{
-        "rlnTomoName": tname, "rlnCenteredCoordinateXAngst": s["centered"][0],
-        "rlnCenteredCoordinateYAngst": s["centered"][1], "rlnCenteredCoordinateZAngst": s["centered"][2],
-        "rlnAngleRot": s["euler"][0], "rlnAngleTilt": s["euler"][1], "rlnAnglePsi": s["euler"][2],
-        "rlnOriginXAngst": 0.0, "rlnOriginYAngst": 0.0, "rlnOriginZAngst": 0.0, "rlnOpticsGroup": 1,
-        "rlnTomoParticleName": f"{tname}/{j + 1}"} for j, s in enumerate(todo)])
+    parts = pd.DataFrame(
+        [
+            {
+                "rlnTomoName": tname,
+                "rlnCenteredCoordinateXAngst": s["centered"][0],
+                "rlnCenteredCoordinateYAngst": s["centered"][1],
+                "rlnCenteredCoordinateZAngst": s["centered"][2],
+                "rlnAngleRot": s["euler"][0],
+                "rlnAngleTilt": s["euler"][1],
+                "rlnAnglePsi": s["euler"][2],
+                "rlnOriginXAngst": 0.0,
+                "rlnOriginYAngst": 0.0,
+                "rlnOriginZAngst": 0.0,
+                "rlnOpticsGroup": 1,
+                "rlnTomoParticleName": f"{tname}/{j + 1}",
+            }
+            for j, s in enumerate(todo)
+        ],
+    )
     parts.index = np.arange(1, len(parts) + 1)
     optics = tomos[OPTICS_COLS].drop_duplicates()
     optics = optics[optics.rlnTomoName == tname].reset_index(drop=True)
-    args = get_tiltseries_data(particles_df=parts, optics_df=optics, trajectories_dict=None, tiltseries_row_entry=row,
-                               tiltseries_relative_dir=project, tomograms_starfile=Path(source.tomograms_star),
-                               tomograms_data=tomos)
+    args = get_tiltseries_data(
+        particles_df=parts,
+        optics_df=optics,
+        trajectories_dict=None,
+        tiltseries_row_entry=row,
+        tiltseries_relative_dir=project,
+        tomograms_starfile=Path(source.tomograms_star),
+        tomograms_data=tomos,
+    )
     scratch = Path(tempfile.mkdtemp(prefix="helixts_", dir=source.scratch or os.environ.get("TMPDIR", "/tmp")))
     try:
         # the constants zarr-particle-tools' reconstruct_local passes to its extraction
         extracted, _ = process_tiltseries(
-            **args, box_size=box, crop_size=box, bin=source.binning, float16=False, no_ctf=True, circle_precrop=True,
-            no_circle_crop=True, dont_apply_offsets=False, no_ic=False, normalize_bin=False, write_fourier=True,
-            tiltseries_relative_dir=project, output_dir=scratch, debug=False)
+            **args,
+            box_size=box,
+            crop_size=box,
+            bin=source.binning,
+            float16=False,
+            no_ctf=True,
+            circle_precrop=True,
+            no_circle_crop=True,
+            dont_apply_offsets=False,
+            no_ic=False,
+            normalize_bin=False,
+            write_fourier=True,
+            tiltseries_relative_dir=project,
+            output_dir=scratch,
+            debug=False,
+        )
         opt = args["optics_row"].copy()  # as zarr-particle-tools updates the optics for 2D stacks
         opt["rlnCtfDataAreCtfPremultiplied"] = 0
         opt["rlnImageDimensionality"] = 2
@@ -163,28 +214,56 @@ def _reconstruct_tomogram(job):
                 continue
             one = extracted[extracted.rlnTomoParticleName == pname]
             d1, w1, d2, w2, _ = reconstruct_single_tiltseries(
-                no_ctf=False, cutoff_fraction=0.01, filtered_particles_df=one, filtered_trajectories_dict=None,
-                tiltseries_row_entry=row, individual_tiltseries_df=args["individual_tiltseries_df"], optics_row=opt)
+                no_ctf=False,
+                cutoff_fraction=0.01,
+                filtered_particles_df=one,
+                filtered_trajectories_dict=None,
+                tiltseries_row_entry=row,
+                individual_tiltseries_df=args["individual_tiltseries_df"],
+                optics_row=opt,
+            )
             vol = gridding_correct_3d_sinc2(particle_fourier_volume=d1 + d2)
-            vol = ctf_correct_3d_wiener(real_space_volume=vol, weights_fourier_volume=w1 + w2,
-                                        wiener_offset=1.0 / source.snr)
+            vol = ctf_correct_3d_wiener(
+                real_space_volume=vol,
+                weights_fourier_volume=w1 + w2,
+                wiener_offset=1.0 / source.snr,
+            )
             c = box // 2
-            core = np.asarray(vol[:, c - half_px:c + half_px + 1, c - half_px:c + half_px + 1], dtype=np.float32)
+            core = np.asarray(vol[:, c - half_px : c + half_px + 1, c - half_px : c + half_px + 1], dtype=np.float32)
             os.makedirs(os.path.dirname(s["stem"]), exist_ok=True)
             np.save(s["stem"] + ".npy", core)
             meta = {k: v for k, v in s.items() if k not in ("B", "stem")}
-            meta.update({"frame_columns_e1_e2_t": np.asarray(s["B"]).tolist(), "step_A": apix, "box": box,
-                         "bin": source.binning, "array_axes": ["z=t", "y=e2", "x=e1"], "axis_index_inplane": half_px,
-                         "protein_sign": 1.0, "wiener_snr": source.snr, "tomo_name": tname,
-                         "source": "zarr-particle-tools API: process_tiltseries + reconstruct_single_tiltseries"})
-            json.dump(meta, open(s["stem"] + ".json", "w"))
+            meta.update(
+                {
+                    "frame_columns_e1_e2_t": np.asarray(s["B"]).tolist(),
+                    "step_A": apix,
+                    "box": box,
+                    "bin": source.binning,
+                    "array_axes": ["z=t", "y=e2", "x=e1"],
+                    "axis_index_inplane": half_px,
+                    "protein_sign": 1.0,
+                    "wiener_snr": source.snr,
+                    "tomo_name": tname,
+                    "source": "zarr-particle-tools API: process_tiltseries + reconstruct_single_tiltseries",
+                },
+            )
+            with open(s["stem"] + ".json", "w") as fh:
+                json.dump(meta, fh)
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
     return tname, len(todo), time.time() - t0
 
 
-def reconstruct(filaments: dict, segment_length: float, half_width: float, source: TiltSeriesSource, extents: dict,
-                out_dir: str, workers: int = 4, log=print) -> dict:
+def reconstruct(
+    filaments: dict,
+    segment_length: float,
+    half_width: float,
+    source: TiltSeriesSource,
+    extents: dict,
+    out_dir: str,
+    workers: int = 4,
+    log=print,
+) -> dict:
     """Reconstruct (or reuse from ``out_dir``) every segment; returns {filament: [bands.SegmentRef]}.
 
     The box is cubic, the smallest even number of binned pixels holding ``segment_length``; the in-plane crop keeps
@@ -199,7 +278,9 @@ def reconstruct(filaments: dict, segment_length: float, half_width: float, sourc
     box = int(np.ceil(segment_length / px / 2)) * 2
     half_px = int(round(half_width / px))
     n = sum(len(v) for v in by_tomo.values())
-    log(f"{n} segments in {len(by_tomo)} tilt series: box {box} px at {px:.3f} A ({box * px:.0f} A), crop +-{half_px} px")
+    log(
+        f"{n} segments in {len(by_tomo)} tilt series: box {box} px at {px:.3f} A ({box * px:.0f} A), crop +-{half_px} px",
+    )
     jobs = [(t, s, source, box, half_px) for t, s in by_tomo.items()]
     if workers > 1:
         with mp.get_context("spawn").Pool(workers) as pool:

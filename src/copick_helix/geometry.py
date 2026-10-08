@@ -38,8 +38,11 @@ class TiltGeometry:
         a = np.asarray(self.tilt_axis, float) / np.linalg.norm(self.tilt_axis)
         b = np.asarray(self.beam, float) / np.linalg.norm(self.beam)
         th = np.radians(np.arange(self.tilt_range[0], self.tilt_range[1] + 1e-6, step_deg))
-        return (np.cos(th)[:, None] * b[None] + np.sin(th)[:, None] * np.cross(a, b)[None]
-                + (1 - np.cos(th))[:, None] * (a @ b) * a[None])
+        return (
+            np.cos(th)[:, None] * b[None]
+            + np.sin(th)[:, None] * np.cross(a, b)[None]
+            + (1 - np.cos(th))[:, None] * (a @ b) * a[None]
+        )
 
 
 def resample(p: np.ndarray, step: float) -> np.ndarray:
@@ -90,9 +93,17 @@ def sample(tomo: np.ndarray, voxel: float, c, e1, e2, coord, chunk: int = 64) ->
     U, V = np.meshgrid(coord, coord, indexing="ij")
     for a in range(0, len(c), chunk):
         b = min(a + chunk, len(c))
-        P = c[a:b, None, None, :] + U[None, :, :, None] * e2[a:b, None, None, :] + V[None, :, :, None] * e1[a:b, None, None, :]
+        P = (
+            c[a:b, None, None, :]
+            + U[None, :, :, None] * e2[a:b, None, None, :]
+            + V[None, :, :, None] * e1[a:b, None, None, :]
+        )
         idx = np.moveaxis(P[..., ::-1] / voxel, -1, 0).reshape(3, -1)
-        out[a:b] = ndi.map_coordinates(tomo, idx, order=1, mode="constant", cval=np.nan).reshape(b - a, len(coord), len(coord))
+        out[a:b] = ndi.map_coordinates(tomo, idx, order=1, mode="constant", cval=np.nan).reshape(
+            b - a,
+            len(coord),
+            len(coord),
+        )
     return out
 
 
@@ -125,11 +136,13 @@ class Straightened:
         np.save(stem + ".npy", self.vol.astype(np.float32))
         d = {k: (v.tolist() if isinstance(v, np.ndarray) else v) for k, v in asdict(self).items() if k != "vol"}
         d["geometry"] = asdict(self.geometry)
-        json.dump(d, open(stem + ".json", "w"))
+        with open(stem + ".json", "w") as fh:
+            json.dump(d, fh)
 
     @classmethod
     def load(cls, stem: str) -> "Straightened":
-        d = json.load(open(stem + ".json"))
+        with open(stem + ".json") as fh:
+            d = json.load(fh)
         d["geometry"] = TiltGeometry(**d["geometry"])
         for k in ("centers", "t", "e1", "e2", "beam_local", "tilt_local"):
             d[k] = np.asarray(d[k])
@@ -185,7 +198,7 @@ class Recenterer:
         x = x - x.mean()
         cc = np.real(np.fft.ifft2(np.fft.fft2(x) * self.tpl_f * mask * self.lowpass))
         c, lim = self.n // 2, int(lim_A / self.step)
-        sub = cc[c - lim:c + lim + 1, c - lim:c + lim + 1]
+        sub = cc[c - lim : c + lim + 1, c - lim : c + lim + 1]
         j, k = np.unravel_index(np.argmax(sub), sub.shape)
         off = []
         for ax, m in ((0, j), (1, k)):
@@ -202,14 +215,24 @@ def protein_sign(vol, coord, band) -> float:
     """+1 if protein is bright: the family's density band against the region outside it."""
     x = np.nanmean(vol, axis=0)
     R = np.hypot(*np.meshgrid(coord, coord, indexing="ij"))
-    inside = np.nanmean(x[(R > band[0]) & (R < band[1])])
-    outside = np.nanmean(x[(R > band[1] + 20) & (R < coord.max())])
+    inside = np.nanmean(x[(band[0] < R) & (band[1] > R)])
+    outside = np.nanmean(x[(band[1] + 20 < R) & (coord.max() > R)])
     return 1.0 if inside > outside else -1.0
 
 
-def straighten(points, tomo: np.ndarray, voxel: float, family: Family, geom: TiltGeometry, step: float = 5.0,
-               iterations: int = 2, window: float = 300.0, smooth: float = 300.0, lim_A: float = 100.0,
-               normalize: bool = True) -> Straightened:
+def straighten(
+    points,
+    tomo: np.ndarray,
+    voxel: float,
+    family: Family,
+    geom: TiltGeometry,
+    step: float = 5.0,
+    iterations: int = 2,
+    window: float = 300.0,
+    smooth: float = 300.0,
+    lim_A: float = 100.0,
+    normalize: bool = True,
+) -> Straightened:
     """Straighten and recenter one filament (points in A, tomogram coordinates; tomo[z, y, x] with voxel size)."""
     if normalize:
         tomo = (tomo - float(tomo.mean())) / float(tomo.std())
@@ -228,12 +251,18 @@ def straighten(points, tomo: np.ndarray, voxel: float, family: Family, geom: Til
         for a in range(0, max(len(sv) - win, 0) + 1, stride):
             mid = min(a + win // 2, len(sv) - 1)
             mask = cross_section_mask(t[mid], e1[mid], e2[mid], geom, rec.kgrid)
-            u, v = rec.offset(sign * np.nanmean(sv[a:a + win], axis=0), mask, lim_A)
+            u, v = rec.offset(sign * np.nanmean(sv[a : a + win], axis=0), mask, lim_A)
             sc.append((a + win / 2) * step)
             du.append(u)
             dv.append(v)
         du, dv = np.array(du), np.array(dv)
-        history.append({"iteration": it, "rms_du_A": float(np.sqrt(np.mean(du**2))), "rms_dv_A": float(np.sqrt(np.mean(dv**2)))})
+        history.append(
+            {
+                "iteration": it,
+                "rms_du_A": float(np.sqrt(np.mean(du**2))),
+                "rms_dv_A": float(np.sqrt(np.mean(dv**2))),
+            },
+        )
         if it == iterations:
             break
         s_now = np.arange(len(c)) * step
@@ -248,7 +277,18 @@ def straighten(points, tomo: np.ndarray, voxel: float, family: Family, geom: Til
         return np.stack([e1 @ v, e2 @ v, t @ v], 1)
 
     vol = np.nan_to_num(sign * sv)
-    return Straightened(vol=vol.astype(np.float32), step=step, centers=c, t=t, e1=e1, e2=e2,
-                        beam_local=local(geom.beam), tilt_local=local(geom.tilt_axis), protein_sign=sign,
-                        eq_coverage_deg=equatorial_coverage(t, geom), geometry=geom, recentering=history,
-                        meta={"nan_fraction": float(np.mean(~np.isfinite(sv)))})
+    return Straightened(
+        vol=vol.astype(np.float32),
+        step=step,
+        centers=c,
+        t=t,
+        e1=e1,
+        e2=e2,
+        beam_local=local(geom.beam),
+        tilt_local=local(geom.tilt_axis),
+        protein_sign=sign,
+        eq_coverage_deg=equatorial_coverage(t, geom),
+        geometry=geom,
+        recentering=history,
+        meta={"nan_fraction": float(np.mean(~np.isfinite(sv)))},
+    )

@@ -96,8 +96,9 @@ class Space:
     def phase(self, k, l, dz):
         phi = 2 * np.pi * np.asarray(k, np.float32) / self.nphi
         z = np.asarray(l, np.float32) * dz
-        return np.exp(-1j * (phi[:, None, None] * self.NN[None, :, None]
-                             + 2 * np.pi * z[:, None, None] * self.ZZ[None, None, :])).astype(np.complex64)
+        return np.exp(
+            -1j * (phi[:, None, None] * self.NN[None, :, None] + 2 * np.pi * z[:, None, None] * self.ZZ[None, None, :]),
+        ).astype(np.complex64)
 
     def best(self, G, g):
         cc = self.ccmap(self.cross(G, g)) / np.sqrt(max(self.power(G), 1e-30))
@@ -145,13 +146,23 @@ def iterate(sp: Space, gs, fil, nfil, pol0, k0, l0, dz, G0=None, fixed_pol=False
         changed = int((new_pol != pol).sum())
         moved = float(np.mean((new_k != k) | (new_l != l)))
         pol, k, l = new_pol, new_k, new_l
-        hist.append({"iter": it, "objective": float(score.sum() / len(gs)), "pol_changed": changed, "align_moved": moved})
+        hist.append(
+            {"iter": it, "objective": float(score.sum() / len(gs)), "pol_changed": changed, "align_moved": moved},
+        )
         stable = stable + 1 if changed == 0 else 0
         if (it >= 2 and changed == 0 and moved < 0.02) or stable >= 5:
             break
     a = _aligned(sp, gs, pol[fil] < 0, k, l, dz)
-    return {"pol": pol, "k": k, "l": l, "G": a.sum(0) / len(gs), "hist": hist, "margin": margin.copy(),
-            "seg_margin": seg_margin.copy(), "objective": hist[-1]["objective"]}
+    return {
+        "pol": pol,
+        "k": k,
+        "l": l,
+        "G": a.sum(0) / len(gs),
+        "hist": hist,
+        "margin": margin.copy(),
+        "seg_margin": seg_margin.copy(),
+        "objective": hist[-1]["objective"],
+    }
 
 
 def agree(p, q):
@@ -169,9 +180,17 @@ class IterativeResult:
     grid: dict = field(default_factory=dict)  # nphi, nz, dz of the alignment grid
 
 
-def assign(g_by_filament: dict[str, np.ndarray], r, n_full, Z_full, cfg: IterativeConfig,
-           model_plus_g: np.ndarray | None = None, rng_seed: int = 7, bootstrap_draws: int = 2000,
-           strength_draws: int = 8) -> IterativeResult:
+def assign(
+    g_by_filament: dict[str, np.ndarray],
+    r,
+    n_full,
+    Z_full,
+    cfg: IterativeConfig,
+    model_plus_g: np.ndarray | None = None,
+    rng_seed: int = 7,
+    bootstrap_draws: int = 2000,
+    strength_draws: int = 8,
+) -> IterativeResult:
     """Run all starts and summarize. g_by_filament: name -> full g of its segments (S, R, n, Z), one segment length.
     model_plus_g: optional full g of a model in the 'plus' orientation, used only to orient the final global sign.
     strength_draws: reruns with fixed random polarities, the baseline for the reference's polarity strength (0 skips
@@ -186,17 +205,46 @@ def assign(g_by_filament: dict[str, np.ndarray], r, n_full, Z_full, cfg: Iterati
     zeros = np.zeros(len(gs), int)
     runs = {}
     for s in range(cfg.random_starts):
-        runs[f"random_{s:02d}"] = iterate(sp, gs, fil, nfil, rng.choice([-1, 1], nfil), zeros, zeros, dz,
-                                          max_iter=cfg.max_iter)
+        runs[f"random_{s:02d}"] = iterate(
+            sp,
+            gs,
+            fil,
+            nfil,
+            rng.choice([-1, 1], nfil),
+            zeros,
+            zeros,
+            dz,
+            max_iter=cfg.max_iter,
+        )
     for s in range(cfg.seed_starts):
         i = int(rng.integers(len(gs)))
         G0 = gs[i] if rng.random() < 0.5 else np.conj(gs[i])
-        runs[f"seed_{s:02d}"] = iterate(sp, gs, fil, nfil, np.ones(nfil, int), zeros, zeros, dz, G0=G0,
-                                        max_iter=cfg.max_iter)
+        runs[f"seed_{s:02d}"] = iterate(
+            sp,
+            gs,
+            fil,
+            nfil,
+            np.ones(nfil, int),
+            zeros,
+            zeros,
+            dz,
+            G0=G0,
+            max_iter=cfg.max_iter,
+        )
     gm = sp.norm(sp.crop(model_plus_g)[None])[0] if model_plus_g is not None else None
     if gm is not None:
-        runs["model_plus"] = iterate(sp, gs, fil, nfil, np.ones(nfil, int), zeros, zeros, dz, G0=gm,
-                                     max_iter=cfg.max_iter)
+        runs["model_plus"] = iterate(
+            sp,
+            gs,
+            fil,
+            nfil,
+            np.ones(nfil, int),
+            zeros,
+            zeros,
+            dz,
+            G0=gm,
+            max_iter=cfg.max_iter,
+        )
     for res in runs.values():
         if gm is not None:
             cp, cm = sp.cc_max(res["G"], gm), sp.cc_max(res["G"], np.conj(gm))
@@ -211,17 +259,41 @@ def assign(g_by_filament: dict[str, np.ndarray], r, n_full, Z_full, cfg: Iterati
             res["orient"] = agree(cons["pol"], res["pol"])[1]
     for res in runs.values():
         res["pol_oriented"] = res["pol"] * res["orient"]
-    run_rows = [{"start": k, "iterations": len(v["hist"]), "objective": v["objective"],
-                 "agree_with_consensus": agree(cons["pol"], v["pol"])[0]} for k, v in runs.items()]
+    run_rows = [
+        {
+            "start": k,
+            "iterations": len(v["hist"]),
+            "objective": v["objective"],
+            "agree_with_consensus": agree(cons["pol"], v["pol"])[0],
+        }
+        for k, v in runs.items()
+    ]
 
     def strength(G):
         return 1 - sp.cc_max(G, np.conj(G))
 
-    s_rand = [strength(iterate(sp, gs, fil, nfil, rng.choice([-1, 1], nfil), cons["k"], cons["l"], dz,
-                               fixed_pol=True, max_iter=cfg.max_iter)["G"]) for _ in range(strength_draws)]
-    strengths = {"consensus": strength(cons["G"]),
-                 "random_fixed_mean": float(np.mean(s_rand)) if s_rand else float("nan"),
-                 "random_fixed_std": float(np.std(s_rand)) if s_rand else float("nan")}
+    s_rand = [
+        strength(
+            iterate(
+                sp,
+                gs,
+                fil,
+                nfil,
+                rng.choice([-1, 1], nfil),
+                cons["k"],
+                cons["l"],
+                dz,
+                fixed_pol=True,
+                max_iter=cfg.max_iter,
+            )["G"],
+        )
+        for _ in range(strength_draws)
+    ]
+    strengths = {
+        "consensus": strength(cons["G"]),
+        "random_fixed_mean": float(np.mean(s_rand)) if s_rand else float("nan"),
+        "random_fixed_std": float(np.std(s_rand)) if s_rand else float("nan"),
+    }
     if gm is not None:
         strengths["model"] = strength(gm)
 
@@ -233,12 +305,22 @@ def assign(g_by_filament: dict[str, np.ndarray], r, n_full, Z_full, cfg: Iterati
         m = seg_margin[fil == f] * cons["pol_oriented"][f]
         draws = rng.choice(m, (bootstrap_draws, len(m)), replace=True).sum(1)
         boot = float(np.mean(draws > 0))
-        call = ("plus" if cons["pol_oriented"][f] > 0 else "minus") if gm is not None else \
-            ("A" if cons["pol_oriented"][f] > 0 else "B")
-        rows.append({"filament": name, "segments": int((fil == f).sum()), "call": call,
-                     "loo_margin": float(cons["margin"][f] * cons["orient"] * cons["pol_oriented"][f]),
-                     "bootstrap": boot, "start_stability": float(stability[f]),
-                     "confident": bool(boot >= 0.95 and stability[f] >= 0.9)})
+        call = (
+            ("plus" if cons["pol_oriented"][f] > 0 else "minus")
+            if gm is not None
+            else ("A" if cons["pol_oriented"][f] > 0 else "B")
+        )
+        rows.append(
+            {
+                "filament": name,
+                "segments": int((fil == f).sum()),
+                "call": call,
+                "loo_margin": float(cons["margin"][f] * cons["orient"] * cons["pol_oriented"][f]),
+                "bootstrap": boot,
+                "start_stability": float(stability[f]),
+                "confident": bool(boot >= 0.95 and stability[f] >= 0.9),
+            },
+        )
     G = cons["G"] if cons["orient"] > 0 else np.conj(cons["G"])
     # per-segment registration to the ORIENTED reference G: G ~ h rotated by +roll about z and shifted by +shift along
     # z, with h = the segment (flip False) or its 180-deg-about-x copy (flip True). A global flip of the reference
@@ -254,10 +336,26 @@ def assign(g_by_filament: dict[str, np.ndarray], r, n_full, Z_full, cfg: Iterati
         h = np.conj(gs[idx]) if flip_f[f] else gs[idx]
         cc, kk, ll = sp.best(G_loo, h)
         for j, (c, k_, l_) in enumerate(zip(cc, kk, ll)):
-            seg_rows.append({"filament": name, "segment": j, "flip": bool(flip_f[f]), "k": int(k_), "l": int(l_),
-                             "roll_deg": float(360.0 * k_ / sp.nphi), "shift_A": float(l_ * dz), "score": float(c)})
-    return IterativeResult(pd.DataFrame(rows), pd.DataFrame(run_rows), G, strengths, pd.DataFrame(seg_rows),
-                           {"nphi": sp.nphi, "nz": sp.nz, "dz": dz, "keep_n": sp.keep_n, "keep_z": sp.keep_z, "r": r})
+            seg_rows.append(
+                {
+                    "filament": name,
+                    "segment": j,
+                    "flip": bool(flip_f[f]),
+                    "k": int(k_),
+                    "l": int(l_),
+                    "roll_deg": float(360.0 * k_ / sp.nphi),
+                    "shift_A": float(l_ * dz),
+                    "score": float(c),
+                },
+            )
+    return IterativeResult(
+        pd.DataFrame(rows),
+        pd.DataFrame(run_rows),
+        G,
+        strengths,
+        pd.DataFrame(seg_rows),
+        {"nphi": sp.nphi, "nz": sp.nz, "dz": dz, "keep_n": sp.keep_n, "keep_z": sp.keep_z, "r": r},
+    )
 
 
 def reference_volume(res: IterativeResult, n_inplane: int, flip_to_plus_up: bool) -> np.ndarray:

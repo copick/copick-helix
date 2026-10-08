@@ -74,8 +74,13 @@ def cylindrical(vol, step, rmin, rmax, dr, nphi=256, center=None):
     for i, ri in enumerate(r):
         x = cx + ri / step * np.cos(phi)
         y = cy + ri / step * np.sin(phi)
-        coords = np.stack([np.broadcast_to(zz[None, :], (nphi, nz)), np.broadcast_to(y[:, None], (nphi, nz)),
-                           np.broadcast_to(x[:, None], (nphi, nz))])
+        coords = np.stack(
+            [
+                np.broadcast_to(zz[None, :], (nphi, nz)),
+                np.broadcast_to(y[:, None], (nphi, nz)),
+                np.broadcast_to(x[:, None], (nphi, nz)),
+            ],
+        )
         out[i] = map_coordinates(vol, coords, order=1, mode="constant")
     return r, phi, out
 
@@ -92,8 +97,16 @@ def bessel_coefficients(cyl, step, window=0.3):
 class PolarPlanes:
     """Exact layer-line planes F(R, Phi) of segments, on a fixed polar grid, and their measured regions."""
 
-    def __init__(self, step: float, n_inplane: int, r_band: tuple[float, float], r_out_mask: float,
-                 npad: int | None = None, nphi: int = 180, mask_edge: float = 15.0):
+    def __init__(
+        self,
+        step: float,
+        n_inplane: int,
+        r_band: tuple[float, float],
+        r_out_mask: float,
+        npad: int | None = None,
+        nphi: int = 180,
+        mask_edge: float = 15.0,
+    ):
         self.step = step
         self.n_inplane = n_inplane
         self.npad = npad or 2 * n_inplane
@@ -115,7 +128,7 @@ class PolarPlanes:
         plane = np.tensordot(ph, seg * self.rmask[None], axes=(0, 0))
         pad = np.zeros((self.npad, self.npad), np.complex64)
         o = (self.npad - plane.shape[0]) // 2
-        pad[o:o + plane.shape[0], o:o + plane.shape[1]] = plane
+        pad[o : o + plane.shape[0], o : o + plane.shape[1]] = plane
         c = self.n_inplane // 2
         pad = np.roll(pad, (-(o + c), -(o + c)), axis=(0, 1))
         Fp = np.fft.fftshift(np.fft.fft2(pad))

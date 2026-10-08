@@ -29,8 +29,14 @@ for i in range(6):
     noisy = (noisy + rng.normal(0, v[:, 30:51, 30:51].std() / np.sqrt(0.3), v.shape)).astype(np.float32)
     fils[f"f{i}"], clean[f"f{i}"] = T._straightened(noisy, beam, tilt), v.astype(np.float32)
 params = pd.DataFrame({"rise": 42.461, "twist": 73.7308}, index=list(fils))
-res = pipeline.run_iterative(fam, fils, params, model=(on_grid(*m.atoms(1250.0), 5.0, 81, 1250.0), {}),
-                             random_starts=4, seed_starts=2)
+res = pipeline.run_iterative(
+    fam,
+    fils,
+    params,
+    model=(on_grid(*m.atoms(1250.0), 5.0, 81, 1250.0), {}),
+    random_starts=4,
+    seed_starts=2,
+)
 print("calls", res.calls.call.tolist(), "(truth alternates plus/minus)")
 screw = fam.screw(fam.reference_params)
 
@@ -39,14 +45,25 @@ def med_cc(mod, omega_sign=1.0):
     subs = []
     for row in res.segments.itertuples():
         reg = Registration(row.segment, *mod(row.flip, row.roll_deg, row.shift_A), row.score)
-        pos, rots, _ = lattice_particles(fils[row.filament], reg, fam.segment_length, 1.0,
-                                         (screw[0], omega_sign * screw[1]), fam.plus_at_minus_z, center_only=True)
+        pos, rots, _ = lattice_particles(
+            fils[row.filament],
+            reg,
+            fam.segment_length,
+            1.0,
+            (screw[0], omega_sign * screw[1]),
+            fam.plus_at_minus_z,
+            center_only=True,
+        )
         subs.append(extract(clean[row.filament], 5.0, np.zeros(3), pos[0], rots[0], (200.0, 80.0, 80.0)))
     cc = [T._cc(subs[i], subs[j]) for i in range(len(subs)) for j in range(i + 1, len(subs))]
     return np.median(cc)
 
 
-for lab, mod, om in (("correct", lambda f, r, s: (f, r, s), 1.0), ("roll sign inverted", lambda f, r, s: (f, -r, s), 1.0),
-                     ("flip ignored", lambda f, r, s: (False, r, s), 1.0),
-                     ("shift sign inverted", lambda f, r, s: (f, r, -s), 1.0), ("screw sign inverted", lambda f, r, s: (f, r, s), -1.0)):
+for lab, mod, om in (
+    ("correct", lambda f, r, s: (f, r, s), 1.0),
+    ("roll sign inverted", lambda f, r, s: (f, -r, s), 1.0),
+    ("flip ignored", lambda f, r, s: (False, r, s), 1.0),
+    ("shift sign inverted", lambda f, r, s: (f, r, -s), 1.0),
+    ("screw sign inverted", lambda f, r, s: (f, r, s), -1.0),
+):
     print(f"{lab:20s} median pairwise CC {med_cc(mod, om):.3f}")

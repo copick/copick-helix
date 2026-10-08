@@ -83,7 +83,8 @@ class SegmentRef:
     def load(self):
         if self.path is None:
             return self.vol, self.step, np.asarray(self.beam, float), np.asarray(self.tilt, float)
-        m = json.load(open(self.path + ".json"))
+        with open(self.path + ".json") as fh:
+            m = json.load(fh)
         v = np.load(self.path + ".npy").astype(np.float32) * float(m.get("protein_sign", 1.0))
         return v, float(m["step_A"]), np.asarray(m["beam"], float), np.asarray(m["tilt_axis"], float)
 
@@ -98,8 +99,18 @@ def phase_randomize(v: np.ndarray, rng) -> np.ndarray:
 class Window:
     """Per-slice polar Fourier samples ``G[s, R, Phi]`` of one segment, and its layer-line planes at any Z."""
 
-    def __init__(self, vol, step, r_out, beam, tilt, half_wedge=44.0, r_band=(1 / 300.0, 1 / 12.0), npad=None,
-                 nphi=180):
+    def __init__(
+        self,
+        vol,
+        step,
+        r_out,
+        beam,
+        tilt,
+        half_wedge=44.0,
+        r_band=(1 / 300.0, 1 / 12.0),
+        npad=None,
+        nphi=180,
+    ):
         n, ny, nx = vol.shape
         self.step, self.n, self.L = step, n, n * step
         self.beam, self.tilt, self.half_wedge = np.asarray(beam, float), np.asarray(tilt, float), half_wedge
@@ -111,7 +122,7 @@ class Window:
         x = (vol - vol.mean()) * (0.5 - 0.5 * np.cos(np.pi * w))[None] * tukey(n)[:, None, None]
         o = (npad - ny) // 2
         pad = np.zeros((n, npad, npad), np.float32)
-        pad[:, o:o + ny, o:o + nx] = x
+        pad[:, o : o + ny, o : o + nx] = x
         pad = np.roll(pad, (-(o + ny // 2), -(o + nx // 2)), axis=(1, 2))
         F = np.fft.fftshift(np.fft.fft2(pad, axes=(1, 2)), axes=(1, 2))
         kf = np.fft.fftshift(np.fft.fftfreq(npad, step))
@@ -121,8 +132,9 @@ class Window:
         self.ky = self.R[:, None] * np.sin(self.phi)[None, :]
         d = kf[1] - kf[0]
         iy, ix = (self.ky - kf[0]) / d, (self.kx - kf[0]) / d
-        self.G = np.stack([map_coordinates(f.real, [iy, ix], order=1) + 1j * map_coordinates(f.imag, [iy, ix], order=1)
-                           for f in F]).astype(np.complex64)
+        self.G = np.stack(
+            [map_coordinates(f.real, [iy, ix], order=1) + 1j * map_coordinates(f.imag, [iy, ix], order=1) for f in F],
+        ).astype(np.complex64)
         self.s = (np.arange(n) - n // 2) * step  # segment center at index n // 2 (the box center)
         self._masks = {}
 
@@ -148,7 +160,7 @@ class Window:
 
     def band_rows(self, band):
         lo, hi = band
-        idx = np.where((self.R >= 1 / lo) & (self.R < 1 / hi))[0]
+        idx = np.where((1 / lo <= self.R) & (1 / hi > self.R))[0]
         return slice(idx[0], idx[-1] + 1) if len(idx) else slice(0, 0)
 
 
@@ -196,7 +208,7 @@ def select_terms(model_vol, step, r_out, rise, twist, cfg: TermConfig) -> dict:
     for m in range(-60, 61):
         for n in range(-cfg.nmax, cfg.nmax + 1):
             Z = z_of(n, m, rise, twist)
-            if n == 0 or Z <= 1e-9 or Z > zmax or Z * win.L < cfg.zmin:
+            if n == 0 or Z <= 1e-9 or zmax < Z or Z * win.L < cfg.zmin:
                 continue
             c, cnt = _order(win.plane(Z), win.mask(Z), n, win.phi)
             p = np.abs(c) ** 2 * cnt
@@ -237,12 +249,21 @@ def enrichment_sums(win: Window, terms_nz, bands, ph=1.0):
         p = ph if np.isscalar(ph) else ph[rows]
         on = off = 0.0
         for n, Z in terms_nz.get(b, []):
-            def pw(z):
+
+            def pw(z, rows=rows, n=n, p=p):
                 c, cnt = _order(win.plane(z, rows), win.mask(z)[rows], n, win.phi, p)
                 return np.abs(c) ** 2 * cnt
+
             on += float(pw(Z).sum())
-            off += float(np.mean([np.sqrt(np.maximum(pw(Z - k / win.L), 1e-30) * np.maximum(pw(Z + k / win.L), 1e-30))
-                                  for k in (2.0, 3.0)], axis=0).sum())
+            off += float(
+                np.mean(
+                    [
+                        np.sqrt(np.maximum(pw(Z - k / win.L), 1e-30) * np.maximum(pw(Z + k / win.L), 1e-30))
+                        for k in (2.0, 3.0)
+                    ],
+                    axis=0,
+                ).sum(),
+            )
         out[b] = (on, off)
     return out
 
@@ -252,8 +273,11 @@ def enrichment_sums(win: Window, terms_nz, bands, ph=1.0):
 
 def flip(C, n):
     """180 deg about x through the segment center."""
-    return np.where((n % 2)[:, None] == 0, 1.0, -1.0) * np.conj(C) if C.ndim == 2 else \
-        np.where((n % 2)[None, :, None] == 0, 1.0, -1.0) * np.conj(C)
+    return (
+        np.where((n % 2)[:, None] == 0, 1.0, -1.0) * np.conj(C)
+        if C.ndim == 2
+        else np.where((n % 2)[None, :, None] == 0, 1.0, -1.0) * np.conj(C)
+    )
 
 
 class Aligner:
@@ -280,7 +304,9 @@ class Aligner:
         return s, self.phis[ip], self.zs[iz]
 
     def apply(self, C, phi0, z0):
-        return C * np.exp(1j * (self.n[None, :, None] * phi0[:, None, None] + 2 * np.pi * self.Z[None, :, None] * z0[:, None, None]))
+        return C * np.exp(
+            1j * (self.n[None, :, None] * phi0[:, None, None] + 2 * np.pi * self.Z[None, :, None] * z0[:, None, None]),
+        )
 
 
 def _loo_refs(A, fil, nfil):
@@ -313,7 +339,7 @@ def iterate(C, fil, nfil, al: Aligner, rng, n_iter=10):
         new = np.where(SU >= SD, 1, -1)
         margin = (SU - SD) / np.maximum(cnt, 1)
         obj = float(np.maximum(SU, SD).sum())
-        up = (new[fil] > 0)
+        up = new[fil] > 0
         A = np.where(up[:, None, None], al.apply(C, pu, zu), al.apply(Cf, pd_, zd))
         changed = int((new != pol).sum())
         pol = new
@@ -340,9 +366,16 @@ def _filament_stats(D, fil, names):
             continue
         s = np.sign(v.sum()) or 1.0
         z = abs(v.mean()) / (v.std(ddof=1) / np.sqrt(len(v))) if len(v) >= 3 and v.std(ddof=1) > 0 else np.nan
-        rows.append({"filament": name, "segments": len(v), "sign": int(s), "consistency": float(np.mean(np.sign(v) == s)),
-                     "halves_agree": bool(np.sign(v[0::2].sum()) == np.sign(v[1::2].sum())) if len(v) >= 4 else None,
-                     "z": float(z)})
+        rows.append(
+            {
+                "filament": name,
+                "segments": len(v),
+                "sign": int(s),
+                "consistency": float(np.mean(np.sign(v) == s)),
+                "halves_agree": bool(np.sign(v[0::2].sum()) == np.sign(v[1::2].sum())) if len(v) >= 4 else None,
+                "z": float(z),
+            },
+        )
     return pd.DataFrame(rows)
 
 
@@ -382,8 +415,14 @@ def assign(C, fil, names, al: Aligner, cfg: TermConfig, model_C=None, rng_seed=0
     stats["pol"] = pol
     stats["margin"] = margin
     stats["stability"] = stability
-    seg = {"flip": flip_seg, "roll_deg": np.degrees(-phi0) % 360.0, "shift_A": -z0, "score": score, "D": D,
-           "orient": orient}
+    seg = {
+        "flip": flip_seg,
+        "roll_deg": np.degrees(-phi0) % 360.0,
+        "shift_A": -z0,
+        "score": score,
+        "D": D,
+        "orient": orient,
+    }
     return stats, seg
 
 
@@ -414,7 +453,6 @@ def _map(fn, jobs, workers):
                 os.environ[k] = v
 
 
-
 def _filament_job(args):
     refs, keys, Zs, nvec, rise, nz_terms, lo_nz, mvol, cfg, decoy_seed = args
     rng = np.random.default_rng(decoy_seed)
@@ -430,7 +468,7 @@ def _filament_job(args):
         if mwin is not None:  # the model through this segment's measured region (diagnostic: model-reference score)
             mwin.beam, mwin.tilt, mwin._masks = np.asarray(beam, float), np.asarray(tilt, float), {}
             MC = coefficients(mwin, keys, Zs, cfg.bands, 1.0, cfg.min_count)
-        for decoy in ((False, True) if cfg.decoys else (False,)):
+        for decoy in (False, True) if cfg.decoys else (False,):
             v = phase_randomize(vol, rng) if decoy else vol
             win = Window(v, step, cfg.r_out, beam, tilt, cfg.half_wedge)
             lo = [(n, Z) for n, Z in lo_nz if abs(Z) * win.L >= cfg.zmin]
@@ -482,7 +520,7 @@ def fit_axial_scale(refs, lo_terms, rise0, twist0, cfg: TermConfig, workers=1):
         return rise0, {}
     nz = [(n, z_of(n, m, rise0, twist0)) for n, m in terms]
     rel = np.linspace(-cfg.fit_range, cfg.fit_range, 41)
-    chunks = [c for c in (sample[i::max(workers, 1)] for i in range(max(workers, 1))) if c]
+    chunks = [c for c in (sample[i :: max(workers, 1)] for i in range(max(workers, 1))) if c]
     acc = np.zeros((len(terms), len(rel)))
     for part in _map(_fit_job, [(c, nz, rel, cfg) for c in chunks], workers):
         for t in range(len(terms)):
@@ -503,8 +541,15 @@ def fit_axial_scale(refs, lo_terms, rise0, twist0, cfg: TermConfig, workers=1):
     return float(rise0 / scale), peaks
 
 
-def analyze(segments: dict, family, cfg: TermConfig | None = None, workers: int = 1, label: bool = True,
-            rise: float | None = None, log=print) -> TermResult:
+def analyze(
+    segments: dict,
+    family,
+    cfg: TermConfig | None = None,
+    workers: int = 1,
+    label: bool = True,
+    rise: float | None = None,
+    log=print,
+) -> TermResult:
     """The term route over a dataset. ``segments``: {filament name: [SegmentRef, ...]}, one grid for all segments
     (step, box). ``rise``: skip the fit and use this rise (A)."""
     cfg = cfg or TermConfig(r_out=family.term_r_out)
@@ -525,10 +570,14 @@ def analyze(segments: dict, family, cfg: TermConfig | None = None, workers: int 
     sc = mrise / rise
     mvol_s = family.term_model(step * sc, n_in, L * sc)[0][:n_s] if label else None
     keys, nvec, Zs = _keys(terms, cfg.use, rise, twist, L, cfg.zmin)
-    nz_terms = {b: [(n, z_of(n, m, rise, twist)) for n, m in terms[b] if abs(z_of(n, m, rise, twist)) * L >= cfg.zmin]
-                for b in cfg.bands}
-    jobs = [(segments[k], keys, Zs, nvec, rise, nz_terms, nz_terms["lo"], mvol_s, cfg, cfg.seed + 1000 + i)
-            for i, k in enumerate(names)]
+    nz_terms = {
+        b: [(n, z_of(n, m, rise, twist)) for n, m in terms[b] if abs(z_of(n, m, rise, twist)) * L >= cfg.zmin]
+        for b in cfg.bands
+    }
+    jobs = [
+        (segments[k], keys, Zs, nvec, rise, nz_terms, nz_terms["lo"], mvol_s, cfg, cfg.seed + 1000 + i)
+        for i, k in enumerate(names)
+    ]
     per = [x for part in _map(_filament_job, jobs, workers) for x in part]
     model_C = None
     if label:
@@ -538,24 +587,40 @@ def analyze(segments: dict, family, cfg: TermConfig | None = None, workers: int 
     fidx = {k: i for i, k in enumerate(names)}
     fil = np.array([fidx[p[0]] for p in per])
     out = {}
-    for decoy in ((False, True) if cfg.decoys else (False,)):
+    for decoy in (False, True) if cfg.decoys else (False,):
         C = np.stack([p[2][decoy][0] for p in per])
         stats, seg = assign(C, fil, names, al, cfg, model_C if not decoy else None, cfg.seed)
         enr = {b: (sum(p[2][decoy][2][b][0] for p in per), sum(p[2][decoy][2][b][1] for p in per)) for b in cfg.bands}
         dm = np.array([p[2][decoy][3] for p in per])
-        segdf = pd.DataFrame({"filament": [p[0] for p in per], "segment": [p[1] for p in per],
-                              "flip": seg["flip"], "roll_deg": seg["roll_deg"], "shift_A": seg["shift_A"],
-                              "offset_e1_A": [p[2][decoy][1][0] for p in per],
-                              "offset_e2_A": [p[2][decoy][1][1] for p in per], "score": seg["score"], "D": seg["D"],
-                              "D_model": dm})
+        segdf = pd.DataFrame(
+            {
+                "filament": [p[0] for p in per],
+                "segment": [p[1] for p in per],
+                "flip": seg["flip"],
+                "roll_deg": seg["roll_deg"],
+                "shift_A": seg["shift_A"],
+                "offset_e1_A": [p[2][decoy][1][0] for p in per],
+                "offset_e2_A": [p[2][decoy][1][1] for p in per],
+                "score": seg["score"],
+                "D": seg["D"],
+                "D_model": dm,
+            },
+        )
         mstats = _filament_stats(dm, fil, names) if label else None
         out[decoy] = (stats, segdf, enr, seg["orient"], mstats)
     stats, segdf, enr, orient, mstats = out[False]
-    summary = {"rise": rise, "twist": twist, "model_rise": mrise, "model_twist": mtwist,
-               "fit_peaks_rel": {str(k): v for k, v in peaks.items()},
-               "terms": {b: [list(t) for t in v] for b, v in terms.items()}, "keys_used": [list(k) for k in keys],
-               "segment_length_A": L, "step_A": step,
-               "enrichment": {b: {"data": enr[b][0] / max(enr[b][1], 1e-30)} for b in cfg.bands}}
+    summary = {
+        "rise": rise,
+        "twist": twist,
+        "model_rise": mrise,
+        "model_twist": mtwist,
+        "fit_peaks_rel": {str(k): v for k, v in peaks.items()},
+        "terms": {b: [list(t) for t in v] for b, v in terms.items()},
+        "keys_used": [list(k) for k in keys],
+        "segment_length_A": L,
+        "step_A": step,
+        "enrichment": {b: {"data": enr[b][0] / max(enr[b][1], 1e-30)} for b in cfg.bands},
+    }
     if cfg.decoys:
         dstats, _, denr, _, dmstats = out[True]
         for b in cfg.bands:
@@ -584,20 +649,31 @@ def analyze(segments: dict, family, cfg: TermConfig | None = None, workers: int 
         both = stats.set_index("filament").pol * mstats.set_index("filament").sign
         summary["data_vs_model_calls"] = float(np.mean(both.dropna() > 0))
     stats["call"] = [("plus" if p > 0 else "minus") if label else ("A" if p > 0 else "B") for p in stats["pol"]]
-    stats["seed"] = ((stats.z >= cfg.z_seed) & (stats.halves_agree == True) & (stats.stability >= cfg.min_stability)  # noqa: E712
-                     & bool(summary["polarity_detected"] if summary["polarity_detected"] is not None else True))
+    stats["seed"] = (
+        (stats.z >= cfg.z_seed)
+        & (stats.halves_agree is True)
+        & (stats.stability >= cfg.min_stability)  # noqa: E712
+        & bool(summary["polarity_detected"] if summary["polarity_detected"] is not None else True)
+    )
     stats["rise"], stats["twist"], stats["segment_length_A"] = rise, twist, L
     if cfg.decoys:
         q = out[True][0]
-        n_seed_decoy = int(((q.z >= cfg.z_seed) & (q.halves_agree == True) & (q.stability >= cfg.min_stability)).sum())  # noqa: E712
+        n_seed_decoy = int(
+            ((q.z >= cfg.z_seed) & (q.halves_agree is True) & (q.stability >= cfg.min_stability)).sum(),
+        )  # noqa: E712
         summary["seeds"] = {"data": int(stats.seed.sum()), "decoy_at_same_rule": n_seed_decoy}
     return TermResult(stats, segdf, summary, out[True][0] if cfg.decoys else None)
 
 
 def _dataset_stats(t, cfg):
     h = t.halves_agree.dropna() if "halves_agree" in t else pd.Series(dtype=bool)
-    return {"filaments": int(len(t)), "halves_agree": int(h.astype(bool).sum()), "halves_n": int(len(h)),
-            "z_ge_seed": int((t.z >= cfg.z_seed).sum()), "consistency_median": float(t.consistency.median())}
+    return {
+        "filaments": int(len(t)),
+        "halves_agree": int(h.astype(bool).sum()),
+        "halves_n": int(len(h)),
+        "z_ge_seed": int((t.z >= cfg.z_seed).sum()),
+        "consistency_median": float(t.consistency.median()),
+    }
 
 
 def bundle_pairs(geometry: dict, calls: dict, names, max_dist=150.0, min_cos=0.9, min_overlap=200.0):
@@ -609,7 +685,7 @@ def bundle_pairs(geometry: dict, calls: dict, names, max_dist=150.0, min_cos=0.9
     out = []
     names = [n for n in names if n in geometry and n in calls]
     for i, a in enumerate(names):
-        for b in names[i + 1:]:
+        for b in names[i + 1 :]:
             if geometry[a][0] != geometry[b][0]:
                 continue
             ca, cb = geometry[a][1], geometry[b][1]
@@ -635,7 +711,8 @@ def segment_refs_from_dir(root: str) -> dict:
         stems = sorted(p[:-4] for p in os.listdir(d) if p.startswith("seg") and p.endswith(".npy"))
         refs = []
         for s in stems:
-            m = json.load(open(os.path.join(d, s + ".json")))
+            with open(os.path.join(d, s + ".json")) as fh:
+                m = json.load(fh)
             refs.append(SegmentRef(f, int(m.get("segment", int(s[3:]))), path=os.path.join(d, s)))
         if refs:
             out[f] = refs

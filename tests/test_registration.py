@@ -14,7 +14,7 @@ from copick_helix.families import microtubule
 from copick_helix.fourier import bessel_coefficients, cylindrical, measured_mask_3d
 from copick_helix.geometry import Straightened, TiltGeometry
 from copick_helix.models import MicrotubuleLattice, on_grid
-from copick_helix.registration import FLIP, Registration, extract, lattice_particles
+from copick_helix.registration import Registration, extract, lattice_particles
 
 LOCAL_6DPV = "/hpc/projects/group.czii/utz.ermel/mt-polarity/models/6DPV.cif"
 STEP = 5.0
@@ -24,9 +24,19 @@ def _straightened(vol, beam, tilt):
     n = vol.shape[0]
     c = np.stack([np.full(n, 40 * STEP), np.full(n, 40 * STEP), np.arange(n) * STEP], 1)
     eye = np.eye(3)
-    return Straightened(vol=vol, step=STEP, centers=c, t=np.tile(eye[2], (n, 1)), e1=np.tile(eye[0], (n, 1)),
-                        e2=np.tile(eye[1], (n, 1)), beam_local=np.tile(beam, (n, 1)), tilt_local=np.tile(tilt, (n, 1)),
-                        protein_sign=1.0, eq_coverage_deg=100.0, geometry=TiltGeometry())
+    return Straightened(
+        vol=vol,
+        step=STEP,
+        centers=c,
+        t=np.tile(eye[2], (n, 1)),
+        e1=np.tile(eye[0], (n, 1)),
+        e2=np.tile(eye[1], (n, 1)),
+        beam_local=np.tile(beam, (n, 1)),
+        tilt_local=np.tile(tilt, (n, 1)),
+        protein_sign=1.0,
+        eq_coverage_deg=100.0,
+        geometry=TiltGeometry(),
+    )
 
 
 def _cc(a, b):
@@ -66,8 +76,14 @@ def run():
         clean[f"f{i}"] = v.astype(np.float32)
         truth[f"f{i}"] = pol
     params = pd.DataFrame({"monomer_repeat": lat.a}, index=list(fils))
-    res = pipeline.run_iterative(fam, fils, params, model=(on_grid(*lat.atoms(13, 3, 1250.0), STEP, 81, 1250.0),
-                                                           {"monomer_repeat": lat.a}), random_starts=4, seed_starts=2)
+    res = pipeline.run_iterative(
+        fam,
+        fils,
+        params,
+        model=(on_grid(*lat.atoms(13, 3, 1250.0), STEP, 81, 1250.0), {"monomer_repeat": lat.a}),
+        random_starts=4,
+        seed_starts=2,
+    )
     return fam, lat, plus, fils, clean, truth, res
 
 
@@ -76,8 +92,15 @@ def _picks(fam, lat, fils, res, center_only=True):
     screw = fam.screw({"monomer_repeat": lat.a})
     for row in res.segments.itertuples():
         reg = Registration(row.segment, row.flip, row.roll_deg, row.shift_A, row.score)
-        pos, rots, _ = lattice_particles(fils[row.filament], reg, fam.segment_length, 1.0, screw,
-                                         fam.plus_at_minus_z, center_only=center_only)
+        pos, rots, _ = lattice_particles(
+            fils[row.filament],
+            reg,
+            fam.segment_length,
+            1.0,
+            screw,
+            fam.plus_at_minus_z,
+            center_only=center_only,
+        )
         out += [(row.filament, p, R) for p, R in zip(pos, rots)]
     return out
 
@@ -120,7 +143,11 @@ def test_helical_registration_round_trip():
     rng = np.random.default_rng(31)
     fils, clean = {}, {}
     for i in range(6):
-        v = np.roll(rotate(plus, rng.uniform(0, 360), axes=(1, 2), reshape=False, order=1), int(rng.integers(0, 40)), axis=0)
+        v = np.roll(
+            rotate(plus, rng.uniform(0, 360), axes=(1, 2), reshape=False, order=1),
+            int(rng.integers(0, 40)),
+            axis=0,
+        )
         if i % 2:
             v = v[::-1, ::-1, :].copy()
         beam, tilt = np.array([1.0, 0, 0]), np.array([0.0, 0.5, np.sqrt(0.75)])
@@ -128,8 +155,14 @@ def test_helical_registration_round_trip():
         noisy = (noisy + rng.normal(0, v[:, 30:51, 30:51].std() / np.sqrt(0.3), v.shape)).astype(np.float32)
         fils[f"f{i}"], clean[f"f{i}"] = _straightened(noisy, beam, tilt), v.astype(np.float32)
     params = pd.DataFrame({"rise": 42.461, "twist": 73.7308}, index=list(fils))
-    res = pipeline.run_iterative(fam, fils, params, model=(on_grid(*m.atoms(1250.0), STEP, 81, 1250.0), {}),
-                                 random_starts=4, seed_starts=2)
+    res = pipeline.run_iterative(
+        fam,
+        fils,
+        params,
+        model=(on_grid(*m.atoms(1250.0), STEP, 81, 1250.0), {}),
+        random_starts=4,
+        seed_starts=2,
+    )
     assert res.calls.call.tolist() == ["plus", "minus"] * 3
     P, om = fam.screw(fam.reference_params)
 
@@ -137,13 +170,24 @@ def test_helical_registration_round_trip():
         subs = []
         for row in res.segments.itertuples():
             reg = Registration(row.segment, *mod(row.flip, row.roll_deg, row.shift_A), row.score)
-            pos, rots, _ = lattice_particles(fils[row.filament], reg, fam.segment_length, 1.0, (P, om_sign * om),
-                                             fam.plus_at_minus_z, center_only=True)
+            pos, rots, _ = lattice_particles(
+                fils[row.filament],
+                reg,
+                fam.segment_length,
+                1.0,
+                (P, om_sign * om),
+                fam.plus_at_minus_z,
+                center_only=True,
+            )
             subs.append(extract(clean[row.filament], STEP, np.zeros(3), pos[0], rots[0], (200.0, 80.0, 80.0)))
         return np.median([_cc(subs[i], subs[j]) for i in range(len(subs)) for j in range(i + 1, len(subs))])
 
     good = median_cc(lambda f, r, s: (f, r, s))
     assert good > 0.95, good
-    for mod, om_sign in ((lambda f, r, s: (f, -r, s), 1.0), (lambda f, r, s: (False, r, s), 1.0),
-                         (lambda f, r, s: (f, r, -s), 1.0), (lambda f, r, s: (f, r, s), -1.0)):
+    for mod, om_sign in (
+        (lambda f, r, s: (f, -r, s), 1.0),
+        (lambda f, r, s: (False, r, s), 1.0),
+        (lambda f, r, s: (f, r, -s), 1.0),
+        (lambda f, r, s: (f, r, s), -1.0),
+    ):
         assert median_cc(mod, om_sign) < good - 0.2

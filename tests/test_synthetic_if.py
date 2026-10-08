@@ -26,8 +26,13 @@ def vols():
 
 
 def _fits(fam, vol_by_name, snr, rng):
-    cfg = invariants.InvariantConfig(terms=fam.terms, triples=fam.triples, r_out=fam.r_out, r_mask=fam.r_mask,
-                                     plane_tol_frac=fam.plane_tol_bins)
+    cfg = invariants.InvariantConfig(
+        terms=fam.terms,
+        triples=fam.triples,
+        r_out=fam.r_out,
+        r_mask=fam.r_mask,
+        plane_tol_frac=fam.plane_tol_bins,
+    )
     planes = PolarPlanes(5.0, 81, cfg.r_band, cfg.r_mask)
     sym = fam.symmetry(**fam.reference_params)
     out = {}
@@ -38,7 +43,7 @@ def _fits(fam, vol_by_name, snr, rng):
         beam = np.array([1.0, 0.0, 0.0])
         v = np.fft.irfftn(np.fft.rfftn(v) * measured_mask_3d(v.shape, 5.0, beam, tilt, 60.0, 10.0), s=v.shape)
         v = (v + rng.normal(0, v[:, 30:51, 30:51].std() / np.sqrt(snr), v.shape)).astype(np.float32)
-        segs = [v[k * 250:(k + 1) * 250] - v[k * 250:(k + 1) * 250].mean() for k in range(2)]
+        segs = [v[k * 250 : (k + 1) * 250] - v[k * 250 : (k + 1) * 250].mean() for k in range(2)]
         out[name] = [invariants.fit_segment(s, SegmentGeometry(beam, tilt), 5.0, sym, cfg, planes) for s in segs]
     return out, cfg
 

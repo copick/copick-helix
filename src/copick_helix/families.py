@@ -68,8 +68,15 @@ class Family:
 
     def support(self, z_max: float, n_max: int, **params) -> Support:
         sym = self.symmetry(**(params or self.reference_params))
-        return Support(sym, r_out=self.r_out, z_max=z_max, n_max=n_max, drop_n0=self.support_drop_n0,
-                       eq_nmax=self.support_eq_nmax, eq_band=self.support_eq_band)
+        return Support(
+            sym,
+            r_out=self.r_out,
+            z_max=z_max,
+            n_max=n_max,
+            drop_n0=self.support_drop_n0,
+            eq_nmax=self.support_eq_nmax,
+            eq_band=self.support_eq_band,
+        )
 
 
 def _ring(radius: float, width: float):
@@ -82,7 +89,8 @@ def _rod(radius: float, edge: float):
 
 def microtubule(N: int = 13, S: int = 3) -> Family:
     """N_S microtubule. The monomer lattice is a 1-start helix: rise S*a/N, twist -360/N (a = monomer repeat, measured
-    per filament from the 4 nm layer line). Phase-invariant terms: equator n = N and monomer line n = S, S - N, S + N."""
+    per filament from the 4 nm layer line). Phase-invariant terms: equator n = N and monomer line n = S, S - N, S + N.
+    """
 
     def symmetry(monomer_repeat: float) -> HelicalSymmetry:
         return HelicalSymmetry(rise=S * monomer_repeat / N, twist=-360.0 / N)
@@ -110,24 +118,63 @@ def microtubule(N: int = 13, S: int = 3) -> Family:
         return on_grid(xyz, w, st.step, st.vol.shape[1], 1250.0), {"monomer_repeat": lat.a}
 
     return Family(
-        name=f"microtubule_{N}_{S}", polar=True, symmetry=symmetry,
-        reference_params={"monomer_repeat": a_ref}, terms=[eq, s0, sm, sp],
-        triples=[(eq, s0, sp), (eq, sm, s0)], r_out=150.0, r_mask=165.0, cyl_band=(60.0, 165.0),
-        segment_length=1250.0, in_plane_half_width=200.0, recenter_profile=_ring(112.0, 20.0),
-        profile_band=(85.0, 135.0), measure=measure, measure_min_quality=3.0, to_reference_grid=to_reference_grid,
-        label_model=label_model, screw=lambda p: (2.0 * p["monomer_repeat"], 0.0), plus_at_minus_z=True,
-        notes={"lattice_readout": "protofilament number from the real-space equator count (lattice.equator_count)",
-               "polarity_convention": "points ordered minus -> plus when polarity_known",
-               "model": "PDB 6DPV (undecorated GDP MT); plus end = side of each monomer's nucleotide"})
+        name=f"microtubule_{N}_{S}",
+        polar=True,
+        symmetry=symmetry,
+        reference_params={"monomer_repeat": a_ref},
+        terms=[eq, s0, sm, sp],
+        triples=[(eq, s0, sp), (eq, sm, s0)],
+        r_out=150.0,
+        r_mask=165.0,
+        cyl_band=(60.0, 165.0),
+        segment_length=1250.0,
+        in_plane_half_width=200.0,
+        recenter_profile=_ring(112.0, 20.0),
+        profile_band=(85.0, 135.0),
+        measure=measure,
+        measure_min_quality=3.0,
+        to_reference_grid=to_reference_grid,
+        label_model=label_model,
+        screw=lambda p: (2.0 * p["monomer_repeat"], 0.0),
+        plus_at_minus_z=True,
+        notes={
+            "lattice_readout": "protofilament number from the real-space equator count (lattice.equator_count)",
+            "polarity_convention": "points ordered minus -> plus when polarity_known",
+            "model": "PDB 6DPV (undecorated GDP MT); plus end = side of each monomer's nucleotide",
+        },
+    )
 
 
-def helical_family(name: str, polar: bool, rise: float, twist: float, terms, triples, fit_lines, model_pdb: str,
-                   r_out: float, r_mask: float, cyl_band, profile_band, recenter_profile, segment_length: float = 1250.0,
-                   in_plane_half_width: float = 200.0, plane_tol_bins: float = 0.5, support_z_bins: float = 1.0,
-                   support_drop_n0: bool = True, support_eq_nmax: int = -1, support_eq_band: float = 0.0,
-                   recenter_window: float = 300.0, recenter_max_shift: float = 100.0, min_line_snr: float = 3.0,
-                   plus_at_minus_z: bool = False, term_r_out: float = 75.0, term_segment_length: float = 760.0,
-                   term_half_width: float = 130.0, notes: dict | None = None) -> Family:
+def helical_family(
+    name: str,
+    polar: bool,
+    rise: float,
+    twist: float,
+    terms,
+    triples,
+    fit_lines,
+    model_pdb: str,
+    r_out: float,
+    r_mask: float,
+    cyl_band,
+    profile_band,
+    recenter_profile,
+    segment_length: float = 1250.0,
+    in_plane_half_width: float = 200.0,
+    plane_tol_bins: float = 0.5,
+    support_z_bins: float = 1.0,
+    support_drop_n0: bool = True,
+    support_eq_nmax: int = -1,
+    support_eq_band: float = 0.0,
+    recenter_window: float = 300.0,
+    recenter_max_shift: float = 100.0,
+    min_line_snr: float = 3.0,
+    plus_at_minus_z: bool = False,
+    term_r_out: float = 75.0,
+    term_segment_length: float = 760.0,
+    term_half_width: float = 130.0,
+    notes: dict | None = None,
+) -> Family:
     """A 1-start helical family (rise, physical twist) whose per-filament rise and twist come from two measured layer
     lines (``fit_lines``: two Terms with different n). Filaments are stretched to the reference rise for the iterative
     reference (a twist mismatch moves layer lines by << 1 Z bin per segment)."""
@@ -159,16 +206,39 @@ def helical_family(name: str, polar: bool, rise: float, twist: float, terms, tri
         m = HelicalModel(model_pdb, rise, twist)
         return on_grid(*m.atoms(length), step, n_inplane, length, res=2.5 * step), rise, m.twist_deposited
 
-    return Family(name=name, polar=polar, symmetry=symmetry, reference_params=ref, terms=list(terms),
-                  triples=list(triples), r_out=r_out, r_mask=r_mask, cyl_band=cyl_band, segment_length=segment_length,
-                  in_plane_half_width=in_plane_half_width, recenter_profile=recenter_profile, profile_band=profile_band,
-                  measure=measure, measure_min_quality=min_line_snr, to_reference_grid=to_reference_grid,
-                  label_model=label_model, plane_tol_bins=plane_tol_bins, support_z_bins=support_z_bins,
-                  support_drop_n0=support_drop_n0, support_eq_nmax=support_eq_nmax, support_eq_band=support_eq_band,
-                  recenter_window=recenter_window, recenter_max_shift=recenter_max_shift,
-                  screw=lambda p: (p["rise"], p["twist"]), plus_at_minus_z=plus_at_minus_z, term_model=term_model,
-                  term_r_out=term_r_out, term_segment_length=term_segment_length, term_half_width=term_half_width,
-                  notes=notes or {})
+    return Family(
+        name=name,
+        polar=polar,
+        symmetry=symmetry,
+        reference_params=ref,
+        terms=list(terms),
+        triples=list(triples),
+        r_out=r_out,
+        r_mask=r_mask,
+        cyl_band=cyl_band,
+        segment_length=segment_length,
+        in_plane_half_width=in_plane_half_width,
+        recenter_profile=recenter_profile,
+        profile_band=profile_band,
+        measure=measure,
+        measure_min_quality=min_line_snr,
+        to_reference_grid=to_reference_grid,
+        label_model=label_model,
+        plane_tol_bins=plane_tol_bins,
+        support_z_bins=support_z_bins,
+        support_drop_n0=support_drop_n0,
+        support_eq_nmax=support_eq_nmax,
+        support_eq_band=support_eq_band,
+        recenter_window=recenter_window,
+        recenter_max_shift=recenter_max_shift,
+        screw=lambda p: (p["rise"], p["twist"]),
+        plus_at_minus_z=plus_at_minus_z,
+        term_model=term_model,
+        term_r_out=term_r_out,
+        term_segment_length=term_segment_length,
+        term_half_width=term_half_width,
+        notes=notes or {},
+    )
 
 
 def intermediate_filament() -> Family:
@@ -186,17 +256,38 @@ def intermediate_filament() -> Family:
     attempt; the term and invariant definitions stay for anyone who wants to try (``--route`` on the API)."""
     T = Term
     fam = helical_family(
-        "intermediate_filament", polar=True, rise=42.461, twist=73.7308,
+        "intermediate_filament",
+        polar=True,
+        rise=42.461,
+        twist=73.7308,
         terms=[T(-5, -1), T(-1, 0), T(4, 1), T(-6, -1), T(9, 2), T(8, 2), T(-10, -2)],
-        triples=[(T(-5, -1), T(4, 1), T(-1, 0)), (T(-1, 0), T(-5, -1), T(-6, -1)), (T(4, 1), T(4, 1), T(8, 2)),
-                 (T(-5, -1), T(-5, -1), T(-10, -2))],
-        fit_lines=(T(-1, 0), T(4, 1)), model_pdb="8RVE", r_out=65.0, r_mask=80.0, cyl_band=(4.0, 80.0),
-        profile_band=(30.0, 55.0), recenter_profile=_ring(42.0, 12.0), plane_tol_bins=2.5, support_z_bins=1.5,
-        support_drop_n0=True, support_eq_nmax=4, support_eq_band=1 / 500.0, recenter_window=600.0,
+        triples=[
+            (T(-5, -1), T(4, 1), T(-1, 0)),
+            (T(-1, 0), T(-5, -1), T(-6, -1)),
+            (T(4, 1), T(4, 1), T(8, 2)),
+            (T(-5, -1), T(-5, -1), T(-10, -2)),
+        ],
+        fit_lines=(T(-1, 0), T(4, 1)),
+        model_pdb="8RVE",
+        r_out=65.0,
+        r_mask=80.0,
+        cyl_band=(4.0, 80.0),
+        profile_band=(30.0, 55.0),
+        recenter_profile=_ring(42.0, 12.0),
+        plane_tol_bins=2.5,
+        support_z_bins=1.5,
+        support_drop_n0=True,
+        support_eq_nmax=4,
+        support_eq_band=1 / 500.0,
+        recenter_window=600.0,
         recenter_max_shift=30.0,
-        notes={"lattice_gate": "required before interpreting polarity", "model": "PDB 8RVE (vimentin), EMD-16844",
-               "lattice_analysis": "off: no IF lattice was detectable in 10521 tomograms or tilt-series "
-                                   "reconstructions (the 8RVE positive control passes), so IF is recentered only"})
+        notes={
+            "lattice_gate": "required before interpreting polarity",
+            "model": "PDB 8RVE (vimentin), EMD-16844",
+            "lattice_analysis": "off: no IF lattice was detectable in 10521 tomograms or tilt-series "
+            "reconstructions (the 8RVE positive control passes), so IF is recentered only",
+        },
+    )
     fam.lattice_analysis = False
     return fam
 
@@ -239,15 +330,36 @@ def actin() -> Family:
         return vol, {"rise": rise, "twist": twist}
 
     return Family(
-        name="actin", polar=True, symmetry=lambda rise, twist: HelicalSymmetry(rise=rise, twist=twist),
-        reference_params={"rise": rise0, "twist": twist0}, terms=[], triples=[], r_out=50.0, r_mask=60.0,
-        cyl_band=(0.0, 60.0), segment_length=760.0, in_plane_half_width=120.0, recenter_profile=_rod(30.0, 8.0),
-        profile_band=(5.0, 35.0), measure=None, label_model=label_model, recenter_window=400.0,
-        recenter_max_shift=40.0, screw=lambda p: (p["rise"], p["twist"]), plus_at_minus_z=True, route="terms",
-        term_model=term_model, term_r_out=60.0, term_segment_length=760.0, term_half_width=120.0,
-        notes={"model": "PDB 6DJO (ADP F-actin); SD2 (res 33-69) points to the pointed end",
-               "polarity_convention": "plus = barbed, minus = pointed; points ordered pointed -> barbed when known",
-               "data": "tilt-series reconstructions (--source tiltseries); tomograms at 10 A carry no polar signal"})
+        name="actin",
+        polar=True,
+        symmetry=lambda rise, twist: HelicalSymmetry(rise=rise, twist=twist),
+        reference_params={"rise": rise0, "twist": twist0},
+        terms=[],
+        triples=[],
+        r_out=50.0,
+        r_mask=60.0,
+        cyl_band=(0.0, 60.0),
+        segment_length=760.0,
+        in_plane_half_width=120.0,
+        recenter_profile=_rod(30.0, 8.0),
+        profile_band=(5.0, 35.0),
+        measure=None,
+        label_model=label_model,
+        recenter_window=400.0,
+        recenter_max_shift=40.0,
+        screw=lambda p: (p["rise"], p["twist"]),
+        plus_at_minus_z=True,
+        route="terms",
+        term_model=term_model,
+        term_r_out=60.0,
+        term_segment_length=760.0,
+        term_half_width=120.0,
+        notes={
+            "model": "PDB 6DJO (ADP F-actin); SD2 (res 33-69) points to the pointed end",
+            "polarity_convention": "plus = barbed, minus = pointed; points ordered pointed -> barbed when known",
+            "data": "tilt-series reconstructions (--source tiltseries); tomograms at 10 A carry no polar signal",
+        },
+    )
 
 
 def get_family(name: str) -> Family:

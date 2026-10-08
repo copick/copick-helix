@@ -23,7 +23,8 @@ def geometry(straight_dir, names):
     for n in names:
         p = os.path.join(straight_dir, n + ".json")
         if os.path.exists(p):
-            m = json.load(open(p))
+            with open(p) as fh:
+                m = json.load(fh)
             c = m["centers_A"] if "centers_A" in m else m["centres_A"]  # the prototype's files spell it centres_A
             g[n] = (str(m["run"]), np.asarray(c)[::10], np.asarray(m["t"])[::10])
     return g
@@ -32,8 +33,12 @@ def geometry(straight_dir, names):
 def pairs_summary(geo, table, label):
     calls = dict(zip(table.filament, table.pol))
     out = {}
-    for name, sel in (("all", table), ("top50_margin", table[table.margin.abs() >= table.margin.abs().median()]),
-                      ("z>=2", table[table.z >= 2]), ("z>=3", table[table.z >= 3])):
+    for name, sel in (
+        ("all", table),
+        ("top50_margin", table[table.margin.abs() >= table.margin.abs().median()]),
+        ("z>=2", table[table.z >= 2]),
+        ("z>=3", table[table.z >= 3]),
+    ):
         pr = bands.bundle_pairs(geo, calls, list(sel.filament))
         out[name] = f"{sum(p[2] for p in pr)}/{len(pr)}"
     print(f"  bundle pairs same polarity ({label}): {out}")
@@ -57,23 +62,49 @@ if __name__ == "__main__":
     res.decoy_table.to_csv(f"{out_dir}/{tag}_decoy_calls.tsv", sep="\t", index=False)
     s = res.summary
     geo = geometry(straight_dir, list(res.table.filament))
-    s["bundle_pairs"] = {"data": pairs_summary(geo, res.table, "data"),
-                         "decoy": pairs_summary(geo, res.decoy_table, "decoy")}
+    s["bundle_pairs"] = {
+        "data": pairs_summary(geo, res.table, "data"),
+        "decoy": pairs_summary(geo, res.decoy_table, "decoy"),
+    }
     # model-reference calls (diagnostic) and bundle pairs on them
     mcalls = res.segments.groupby("filament").D_model.sum()
-    mt = pd.DataFrame({"filament": mcalls.index, "pol": np.sign(mcalls.values), "margin": mcalls.values,
-                       "z": res.table.set_index("filament").z.reindex(mcalls.index).values})
+    mt = pd.DataFrame(
+        {
+            "filament": mcalls.index,
+            "pol": np.sign(mcalls.values),
+            "margin": mcalls.values,
+            "z": res.table.set_index("filament").z.reindex(mcalls.index).values,
+        },
+    )
     s["bundle_pairs"]["model_reference"] = pairs_summary(geo, mt, "model reference")
     # against the fork
     fk_it = pd.read_csv(f"{fork}_iterative_data_lo+mid.tsv", sep="\t").set_index("filament").pol
     tpl = pd.read_csv(f"{fork}.tsv", sep="\t")
     fk_tpl = tpl[tpl.decoy == False].groupby("filament")["lo+mid"].sum()  # noqa: E712
     mine = res.table.set_index("filament").pol
-    s["vs_fork"] = {"data_built_vs_fork_data_built": agree(mine, fk_it), "data_built_vs_fork_model_ref": agree(mine, fk_tpl),
-                    "model_ref_vs_fork_model_ref": agree(mcalls, fk_tpl), "fork_data_built_vs_fork_model_ref": agree(fk_it, fk_tpl)}
+    s["vs_fork"] = {
+        "data_built_vs_fork_data_built": agree(mine, fk_it),
+        "data_built_vs_fork_model_ref": agree(mine, fk_tpl),
+        "model_ref_vs_fork_model_ref": agree(mcalls, fk_tpl),
+        "fork_data_built_vs_fork_model_ref": agree(fk_it, fk_tpl),
+    }
     conf = res.table[(res.table.z >= 3)].set_index("filament").pol
     s["vs_fork"]["confident_data_built_vs_fork_model_ref"] = agree(conf, fk_tpl)
-    json.dump(s, open(f"{out_dir}/{tag}_summary.json", "w"), indent=1, default=str)
-    for k in ("rise", "fit_peaks_rel", "terms", "enrichment", "data", "decoy", "model_reference", "data_vs_model_calls",
-              "lattice_detected", "polarity_detected", "halves_excess", "seeds", "vs_fork"):
+    with open(f"{out_dir}/{tag}_summary.json", "w") as fh:
+        json.dump(s, fh, indent=1, default=str)
+    for k in (
+        "rise",
+        "fit_peaks_rel",
+        "terms",
+        "enrichment",
+        "data",
+        "decoy",
+        "model_reference",
+        "data_vs_model_calls",
+        "lattice_detected",
+        "polarity_detected",
+        "halves_excess",
+        "seeds",
+        "vs_fork",
+    ):
         print(k, s.get(k))

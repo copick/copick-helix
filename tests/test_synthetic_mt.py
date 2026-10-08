@@ -50,7 +50,7 @@ def synthetic():
 
 
 def _segments(v, n=250):
-    return [v[k * n:(k + 1) * n] - v[k * n:(k + 1) * n].mean() for k in range(v.shape[0] // n)]
+    return [v[k * n : (k + 1) * n] - v[k * n : (k + 1) * n].mean() for k in range(v.shape[0] // n)]
 
 
 def test_invariants_split_and_label(synthetic):
@@ -59,10 +59,26 @@ def test_invariants_split_and_label(synthetic):
     cfg = invariants.InvariantConfig(terms=fam.terms, triples=fam.triples, r_out=fam.r_out, r_mask=fam.r_mask)
     planes = PolarPlanes(5.0, 81, cfg.r_band, cfg.r_mask)
     sym = fam.symmetry(monomer_repeat=lat.a)
-    fits = {k: [invariants.fit_segment(s, g, 5.0, sym, cfg, planes) for s in _segments(v)] for k, (v, g) in fits_items(fils)}
-    mcfg = invariants.InvariantConfig(terms=fam.terms, triples=fam.triples, r_out=fam.r_out, r_mask=fam.r_mask, half_wedge=90.0)
-    model = [invariants.fit_segment(_segments(plus)[0], SegmentGeometry(np.array([1.0, 0, 0]), np.array([0, 0, 1.0])),
-                                 5.0, sym, mcfg, planes)]
+    fits = {
+        k: [invariants.fit_segment(s, g, 5.0, sym, cfg, planes) for s in _segments(v)] for k, (v, g) in fits_items(fils)
+    }
+    mcfg = invariants.InvariantConfig(
+        terms=fam.terms,
+        triples=fam.triples,
+        r_out=fam.r_out,
+        r_mask=fam.r_mask,
+        half_wedge=90.0,
+    )
+    model = [
+        invariants.fit_segment(
+            _segments(plus)[0],
+            SegmentGeometry(np.array([1.0, 0, 0]), np.array([0, 0, 1.0])),
+            5.0,
+            sym,
+            mcfg,
+            planes,
+        ),
+    ]
     table, summ = invariants.assign(fits, cfg, model)
     assert all(table.set_index("filament").call[k] == truth[k] for k in truth)
     assert summ["eigen_gap"] > 5
@@ -84,8 +100,12 @@ def test_iterative_converges_and_labels(synthetic):
             r, n, Z, gg = iterative.segment_g(s, g, 5.0, cfg)
             gl.append(gg)
         gby[k] = np.stack(gl)
-    _, _, _, gm = iterative.segment_g(_segments(plus)[0], SegmentGeometry(np.array([1.0, 0, 0]), np.array([0, 0, 1.0])),
-                                      5.0, iterative.IterativeConfig(half_wedge=90.0))
+    _, _, _, gm = iterative.segment_g(
+        _segments(plus)[0],
+        SegmentGeometry(np.array([1.0, 0, 0]), np.array([0, 0, 1.0])),
+        5.0,
+        iterative.IterativeConfig(half_wedge=90.0),
+    )
     res = iterative.assign(gby, r, n, Z, cfg, model_plus_g=gm)
     calls = res.calls.set_index("filament").call
     assert all(calls[k] == truth[k] for k in truth)
