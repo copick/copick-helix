@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "copick-helix"
-version = "0.1.0.dev0"
+dynamic = ["version"]
 description = "Fast, data-driven polarity, lattice and in-plane orientation of traced filaments in cryo-ET (copick)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -32,11 +32,62 @@ helix_polarity = "copick_helix.cli:polarity"
 helix_picks = "copick_helix.cli:picks"
 helix_recenter = "copick_helix.cli:recenter"
 
+[tool.hatch.version]
+path = "src/copick_helix/__init__.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/copick_helix"]
 
+[tool.black]
+line-length = 120
+target_version = ['py310']
+
 [tool.ruff]
 line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E", "W",  # pycodestyle
+    "F",       # pyflakes
+    "B",       # bugbear
+    "I",       # isort
+    "N",       # pep8-naming
+    "ASYNC",   # async
+    "COM",     # commas
+    "C4",      # comprehensions
+    "DTZ",     # datetimez
+    "ISC",     # implicit-str-concat
+    "G",       # logging-format
+    "T20",     # print
+    "SIM",     # simplify
+]
+ignore = [
+    "G004",   # logging format
+    "W293",   # blank line contains whitespace
+    "B008",   # Do not perform calls in argument defaults
+    "N802",   # Function name should be lowercase
+    "N805",   # First argument of a method should be named `self`
+    "N806",   # Variable in function should be lowercase
+    "N803",   # Argument name should be lowercase (Z, G, A, N: the physics notation)
+    "N812",   # Lowercase imported as non-lowercase
+    "N815",   # mixedCase in class scope (shift_A: units in the name)
+    "E741",   # Ambiguous variable name (l: the axial shift index)
+    "B905",   # zip() without strict=
+    "N999",   # Invalid module name
+    "E501",   # line too long
+    "C408",   # rewrite empty built-ins as literals
+    "T201",   # print statements.
+    "DTZ007", # Datetime objects without timezones.
+    "DTZ005", # More datetimes without timezones.
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["copick_helix"]
+
+[tool.ruff.lint.flake8-quotes]
+docstring-quotes = "double"
 
 [tool.pytest.ini_options]
+minversion = "6.0"
 testpaths = ["tests"]
