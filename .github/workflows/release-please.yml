@@ -2,9 +2,22 @@ name: Create Release PRs
 
 on:
   workflow_dispatch:
+    inputs:
+      target_branch:
+        description: Branch to release
+        required: true
+        default: main
+        type: choice
+        options:
+          - main
+          - v2.0
   push:
     branches:
       - main
+      - v2.0
+
+env:
+  RELEASE_TARGET_BRANCH: ${{ github.event_name == 'workflow_dispatch' && inputs.target_branch || github.ref_name }}
 
 permissions:
   contents: write
@@ -13,8 +26,11 @@ permissions:
 
 jobs:
   release-please:
+    # Creating v2.0 from main emits a push event. Wait for the first real commit
+    # so the initial alpha can be bootstrapped deliberately with Release-As.
+    if: github.event_name == 'workflow_dispatch' || github.event.created == false
     concurrency:
-      group: ${{ github.workflow }}-${{ github.ref }}
+      group: ${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && inputs.target_branch || github.ref_name }}
       cancel-in-progress: true
 
     runs-on: ubuntu-latest
@@ -24,39 +40,57 @@ jobs:
         id: release
         with:
           manifest-file: ".release-please.manifest.json"
-          config-file: "release-please.config.json"
-          target-branch: "main"
+          config-file: ${{ env.RELEASE_TARGET_BRANCH == 'v2.0' && 'release-please.prerelease.config.json' || 'release-please.config.json' }}
+          target-branch: ${{ env.RELEASE_TARGET_BRANCH }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
     outputs:
       paths_released: ${{ steps.release.outputs.paths_released }}
+      release_created: ${{ steps.release.outputs.release_created }}
+      sha: ${{ steps.release.outputs.sha }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
 
+  # Not published to PyPI yet: uncomment to publish alpha prereleases from v2.0.
   # publish-pypi-package:
   #   name: Build and publish Python package to PyPI
   #   runs-on: ubuntu-latest
   #   needs: release-please
-  #   if: contains(needs.release-please.outputs.paths_released, '.')
+  #   if: needs.release-please.outputs.release_created == 'true'
   #   environment:
   #     name: pypi
   #     url: https://pypi.org/p/copick-helix
   #   permissions:
   #     id-token: write # IMPORTANT: this permission is mandatory for trusted publishing
   #   steps:
-  #     - name: Checkout ref branch
-  #       uses: actions/checkout@v6
+  #     - name: Checkout released commit
+  #       uses: actions/checkout@v7
   #       with:
-  #         ref: ${{ github.ref }}
+  #         ref: ${{ needs.release-please.outputs.sha }}
   #         fetch-depth: 0
   #
   #     - name: Install uv
   #       uses: astral-sh/setup-uv@v7
   #       with:
   #         version: "0.7.13"
-  #         python-version: "3.12"
+  #         python-version: "3.11"
   #
   #     - name: build
   #       run: |
   #         uv build
+  #
+  #     # release-please's own Python updater misses a version with a dotted prerelease suffix (2.0.0-alpha.1), so
+  #     # src/copick_helix/__init__.py carries an x-release-please-version marker; refuse to upload if it was still missed.
+  #     - name: Check the built version is the release's
+  #       env:
+  #         RELEASE_VERSION: ${{ needs.release-please.outputs.version }}
+  #       run: >
+  #         uv run --no-project --with packaging python -c
+  #         "import glob, os, sys; from packaging.version import Version;
+  #         want = Version(os.environ['RELEASE_VERSION']);
+  #         got = Version(os.path.basename(glob.glob('dist/*.whl')[0]).split('-')[1]);
+  #         print(f'release {want}, built {got}');
+  #         sys.exit(0 if got == want else f'Built {got}, but the release is {want}: src/copick_helix/__init__.py was not bumped.')"
   #
   #     - name: Publish distribution to PyPI
   #       uses: pypa/gh-action-pypi-publish@release/v1

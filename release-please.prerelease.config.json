@@ -1,0 +1,32 @@
+{
+  "changelog-sections": [
+    { "type": "feat", "section": "Features" },
+    { "type": "fix", "section": "Bug Fixes" },
+    { "type": "perf", "section": "Performance Improvements" },
+    { "type": "revert", "section": "Reverts" },
+    { "type": "docs", "section": "Documentation" },
+    { "type": "style", "section": "Styles" },
+    { "type": "chore", "section": "Miscellaneous Chores" },
+    { "type": "refactor", "section": "Code Refactoring" },
+    { "type": "test", "section": "Tests" },
+    { "type": "build", "section": "Build System" },
+    { "type": "ci", "section": "Continuous Integration" }
+  ],
+  "packages": {
+    ".": {
+      "package-name": "copick-helix",
+      "extra-files": [{ "type": "generic", "path": "src/copick_helix/__init__.py" }],
+      "tag-prefix": "copick-helix ",
+      "release-type": "python",
+      "versioning": "prerelease",
+      "prerelease-type": "alpha",
+      "separate-pull-requests": true,
+      "changelog-path": "CHANGELOG.md",
+      "bump-minor-pre-major": false,
+      "bump-patch-for-minor-pre-major": false,
+      "draft": false,
+      "prerelease": true,
+      "pull-request-footer": "Merging this PR will create a copick-helix alpha prerelease."
+    }
+  }
+}
