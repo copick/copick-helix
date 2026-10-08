@@ -285,9 +285,10 @@ def polarity(config, run_names, input_uri, tomogram, family_name, tilt_range, ti
 
 
 def _write_copick(root, fils, family, table, call_col, reg, dense, output_uri, picks_uri, seeds_only, lattice_detected,
-                  ref_path):
+                  ref_path, lines: dict | None = None):
     """Center-line filaments (ordered minus -> plus when known; analysis in metadata), registration picks under the
-    same URI, and optional dense picks."""
+    same URI, and optional dense picks. ``lines``: name -> center line to write instead of the straightened one (the
+    term route's refined axis)."""
     rows = table.set_index("filament")
     by_run: dict = {}
     for name, st in fils.items():
@@ -307,7 +308,8 @@ def _write_copick(root, fils, family, table, call_col, reg, dense, output_uri, p
                 seed = bool(row["seed"]) if "seed" in rows else False
                 info = {k: (v.item() if hasattr(v, "item") else v) for k, v in row.items() if not str(k).startswith("_")}
                 items.append({
-                    "instance_id": fils[name].meta["instance_id"], "centers": fils[name].centers,
+                    "instance_id": fils[name].meta["instance_id"],
+                    "centers": lines[name] if lines and name in lines else fils[name].centers,
                     "reverse": call == "plus",  # 'plus': plus end at the first trace point -> reverse to minus -> plus
                     "known": seed and call in ("plus", "minus"),
                     "metadata": {"copick_helix": {"version": __version__, "family": family.name, "call": call,
@@ -338,7 +340,7 @@ def _polarity_terms(root, fils, family, work_dir, label, output_uri, picks_uri, 
     """The term route (actin; any family with a term model): segments from the tilt series or the straightened
     tomograms, band-limited terms, data-built reference, decoys."""
     from . import bands, tiltseries
-    from .pipeline import term_average, term_registration_particles, term_segments
+    from .pipeline import term_average, term_center_lines, term_registration_particles, term_segments
 
     L = family.term_segment_length
     if source == "tiltseries":
@@ -395,7 +397,7 @@ def _polarity_terms(root, fils, family, work_dir, label, output_uri, picks_uri, 
     reg = term_registration_particles(family, fils, res, L)
     dense = term_registration_particles(family, fils, res, L, every=every) if picks_uri else {}
     _write_copick(root, fils, family, table, "call", reg, dense, output_uri, picks_uri, seeds_only,
-                  s.get("lattice_detected"), ref_path)
+                  s.get("lattice_detected"), ref_path, lines=term_center_lines(fils, res, L))
 
 
 @click.command("helix-picks", context_settings={"show_default": True})

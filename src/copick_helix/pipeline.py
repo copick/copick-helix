@@ -238,21 +238,48 @@ def _term_regs(res, name):
                (float(row.offset_e1_A), float(row.offset_e2_A)))
 
 
+def term_center_lines(filaments: dict[str, Straightened], res, segment_length: float) -> dict:
+    """The term route's refined axis: each filament's straightened center line moved by its segments' refined offsets
+    (along e1, e2), interpolated linearly between segment centers and held constant beyond the end segments. The
+    registration picks sit on this line at their segment centers."""
+    out = {}
+    for name, st in filaments.items():
+        regs = list(_term_regs(res, name))
+        if not regs:
+            continue
+        n = int(round(segment_length / st.step))
+        s_k = np.array([(reg.segment * n + n // 2) * st.step for reg, _ in regs])
+        d = np.array([off for _, off in regs], float)
+        order = np.argsort(s_k)
+        s_k, d = s_k[order], d[order]
+        s = np.arange(len(st.centers)) * st.step
+        dx, dy = np.interp(s, s_k, d[:, 0]), np.interp(s, s_k, d[:, 1])
+        out[name] = st.centers + dx[:, None] * st.e1 + dy[:, None] * st.e2
+    return out
+
+
 def term_registration_particles(family: Family, filaments: dict[str, Straightened], res, segment_length: float,
                                 every: int | None = None) -> dict:
-    """As ``registration_particles``, for the term route: per filament (positions, rotations, scores, segment)."""
+    """As ``registration_particles``, for the term route: per filament (positions, rotations, scores, segment).
+
+    Positions follow ``term_center_lines`` (the segment offsets interpolated along the filament), so every pick lies
+    on the written center line; at a segment center that is exactly the segment's own refined offset."""
+    import dataclasses
+
     from .registration import term_particles
 
     rise, twist = float(res.summary["rise"]), float(res.summary["twist"])
     screw = family.screw({"rise": rise, "twist": twist})
+    lines = term_center_lines(filaments, res, segment_length)
     out = {}
     for name, st in filaments.items():
         n = int(round(segment_length / st.step))
+        on_line = dataclasses.replace(st, centers=lines[name]) if name in lines else st
         P, R, S, G = [], [], [], []
         for reg, off in _term_regs(res, name):
             s_center = (reg.segment * n + n // 2) * st.step
-            pos, rots, _ = term_particles(st, s_center, reg, off, screw, family.plus_at_minus_z, segment_length / 2,
-                                          every=every or 1, center_only=every is None)
+            pos, rots, _ = term_particles(on_line, s_center, reg, (0.0, 0.0), screw, family.plus_at_minus_z,
+                                          segment_length / 2, every=every or 1, center_only=every is None)
             P.append(pos)
             R.append(rots)
             S.append(np.full(len(pos), reg.score))
