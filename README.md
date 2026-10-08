@@ -1,9 +1,50 @@
 # copick-helix
 
 Fast, data-driven polarity, lattice and in-plane orientation of traced filaments (microtubules, actin; intermediate
-filaments in progress) in cryo-electron tomograms, for copick projects. No subtomogram refinement: each
+filaments are recentered only) in cryo-electron tomograms, for copick projects. No subtomogram refinement: each
 filament's own helical Fourier signal, restricted to where its structure puts signal, measured only where the tilt
 series sampled it.
+
+## How it works
+
+Each traced filament is straightened along its trace and recentered on its density. Its helical signal is then
+measured only where the family's helical selection rule puts it (the layer lines and the Bessel orders allowed on each),
+and only where the tilt series sampled Fourier space. Two quantities come out of it:
+- **polarity:** relative, by comparing filaments with each other and with a reference built from the data. An atomic
+  model only names which group is plus.
+- **registration:** each segment's rotation about and shift along the axis on the lattice.
+
+Every call is tested against phase-scrambled decoys, which keep the power spectrum but have no helical order; only
+filaments that beat the decoys and are confident become seeds (`polarity_known`). The results go back into copick as
+filaments and oriented, lattice-registered picks, ready for a refinement that starts with local searches.
+
+```mermaid
+flowchart TD
+    traces["copick filaments (traces)"] --> straighten
+    tomo["CTF-corrected tomogram"] --> straighten
+    straighten["Straighten and recenter<br/>rotation-minimizing frames,<br/>family profile: ring (MT), rod (actin, IF)"] --> family{"family"}
+    family -- "intermediate filament" --> recenter["recentered center lines<br/>and evenly spaced picks"]
+    family -- "microtubule" --> params
+    family -- "actin" --> recon
+    subgraph cylindrical ["Cylindrical route (microtubule, from the tomogram)"]
+        params["axial repeat, protofilament number"] --> gate["lattice gate vs decoys"]
+        gate --> invariants["phase invariants"]
+        gate --> iterative["iterative data-built reference"]
+    end
+    tiltseries["tilt series and tomograms.star"] --> recon
+    subgraph term ["Term route (actin, from the tilt series)"]
+        recon["per-segment reconstruction<br/>zarr-particle-tools, per-particle CTF"] --> bands["band-limited helical terms,<br/>axis offset refined"]
+        bands --> score["align and score both polarities<br/>vs a leave-one-out data-built reference"]
+        score --> decoys["decoys, halves, bundle pairs"]
+    end
+    invariants --> calls["calls, confidence, seeds"]
+    iterative --> calls
+    decoys --> calls
+    calls --> label["name plus / minus with an atomic model<br/>(6DPV, 6DJO)"]
+    label --> outputs["copick: filaments ordered minus to plus,<br/>polarity_known on seeds,<br/>one registration pick per segment,<br/>reference map (fast average)"]
+    outputs --> dense["helix-picks: dense lattice-registered picks,<br/>+Z towards the plus end"]
+    dense --> refine["RELION / zarr-particle-tools:<br/>extract, reconstruct, local refinement"]
+```
 
 ## Install
 
@@ -97,7 +138,7 @@ segments). `polarity_known` is set only where polarity is detected over the deco
    and calls each filament. The halves, z scores and bundle-pair agreement are compared against the same pipeline on
    phase-scrambled decoys; polarity counts as detected only when the data beat the decoys in halves agreement or in
    the number of confident filaments. On the
-   tilt-series segments of EMPIAR-10521 (182 actin filaments) the halves agree for 105/135 filaments against 60/135
+   tilt-series segments of CryoET Data Portal dataset 10521 (182 actin filaments) the halves agree for 105/135 filaments against 60/135
    for decoys, and side-by-side bundle neighbors share polarity in 147/177 pairs against 93/177.
 
 ## Dependencies
