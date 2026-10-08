@@ -64,6 +64,7 @@ class Family:
     term_segment_length: float = 760.0  # A, term-route segment (tilt-series particle) length
     term_half_width: float = 120.0  # A, in-plane crop of a tilt-series segment
     notes: dict = field(default_factory=dict)
+    lattice_analysis: bool = True  # False: recentring only (no lattice, polarity or registration is attempted)
 
     def support(self, z_max: float, n_max: int, **params) -> Support:
         sym = self.symmetry(**(params or self.reference_params))
@@ -177,9 +178,14 @@ def intermediate_filament() -> Family:
     The deposited model and map are not symmetric under a polarity flip, so the family is treated as polar. In 10 A
     tomograms its layer lines were not detectable (pooled enrichment at decoy level), so a polarity call needs the
     lattice gate first. Closely spaced lines ((4, 1) is 0.7 Z bins from (-1, 0) at 125 nm) are fitted together as
-    nuisance orders within 2.5 bins; without that, an exactly apolar control showed a spurious eigenvalue gap."""
+    nuisance orders within 2.5 bins; without that, an exactly apolar control showed a spurious eigenvalue gap.
+
+    ``lattice_analysis`` is off: no IF lattice was detectable in the 10521 tomograms or tilt-series reconstructions
+    (term route at the 8RVE screw and the fitted one; synthetic 8RVE filaments pass the same route), and the deposited
+    vimentin maps share one screw. The commands recentre IF traces and write them, without a lattice or polarity
+    attempt; the term and invariant definitions stay for anyone who wants to try (``--route`` on the API)."""
     T = Term
-    return helical_family(
+    fam = helical_family(
         "intermediate_filament", polar=True, rise=42.461, twist=73.7308,
         terms=[T(-5, -1), T(-1, 0), T(4, 1), T(-6, -1), T(9, 2), T(8, 2), T(-10, -2)],
         triples=[(T(-5, -1), T(4, 1), T(-1, 0)), (T(-1, 0), T(-5, -1), T(-6, -1)), (T(4, 1), T(4, 1), T(8, 2)),
@@ -188,7 +194,11 @@ def intermediate_filament() -> Family:
         profile_band=(30.0, 55.0), recentre_profile=_ring(42.0, 12.0), plane_tol_bins=2.5, support_z_bins=1.5,
         support_drop_n0=True, support_eq_nmax=4, support_eq_band=1 / 500.0, recentre_window=600.0,
         recentre_max_shift=30.0,
-        notes={"lattice_gate": "required before interpreting polarity", "model": "PDB 8RVE (vimentin), EMD-16844"})
+        notes={"lattice_gate": "required before interpreting polarity", "model": "PDB 8RVE (vimentin), EMD-16844",
+               "lattice_analysis": "off: no IF lattice was detectable in 10521 tomograms or tilt-series "
+                                   "reconstructions (the 8RVE positive control passes), so IF is recentred only"})
+    fam.lattice_analysis = False
+    return fam
 
 
 _ACTIN = {}

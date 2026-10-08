@@ -29,7 +29,18 @@ copick process helix-polarity -c config.json \
     -i "actin:traces/1" -t "wbp-filtered@10.0" --family actin --tilt-range -45 63 \
     --source tiltseries --tomograms-star relion_project/Import/job001/tomograms.star --bin 3 --workers 8 \
     --work-dir helix_actin/ -o "actin:helix/1"
+
+# intermediate filaments: recentring only (no lattice or polarity)
+copick process helix-recentre -c config.json \
+    -i "intermediate-filament:baseline/v1" -t "wbp-filtered@10.0" --family intermediate_filament \
+    --tilt-range -45 63 --work-dir helix_if/ -o "intermediate-filament:recentred/1" \
+    --picks "intermediate-filament:recentred/1" --spacing 85
 ```
+
+`helix-recentre` recentres each trace on its density (the family's cross-section profile) and writes the recentred
+centre lines as filaments, with no lattice or polarity analysis. With `--picks`, it also writes evenly spaced picks
+oriented along the line: +Z follows the trace direction, which is not a polarity, and the rotation about the axis is
+arbitrary but continuous.
 
 `helix-polarity` straightens and recentres each filament and measures its helical parameters. It runs both polarity
 methods and registers every segment to a reference built from the data. With `-o object:user/session` it writes:
@@ -51,7 +62,8 @@ Every particle sits on the same lattice position and in the same frame, so a ref
 searches. `helix-polarity --picks URI --every n` writes the same dense picks directly from the analysis.
 
 `--family`: `microtubule` (13_3), `microtubule_N_S`, `actin` (6DJO; plus = barbed end), `intermediate_filament`
-(vimentin, 8RVE; needs the lattice gate). Use CTF-corrected tomograms for microtubules: the polarity signal sits at
+(vimentin, 8RVE; recentring only, since no IF lattice was detectable in cellular data. `helix-polarity` with it runs
+`helix-recentre`.) Use CTF-corrected tomograms for microtubules: the polarity signal sits at
 20-40 A, where the first CTF zero usually lies.
 
 **Actin** (and any family with an atomic model, via `--route terms`) uses the term route. A deconvolved 10 A tomogram
