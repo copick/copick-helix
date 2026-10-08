@@ -41,7 +41,7 @@ package.
 | Recentring prior | ring, r 112 A | solid rod, r about 35 A | rod or tube, r about 50 A |
 | Fourier support | equator n = 0, +-13 k; monomer line n = 3 + 13 k | (n, m) terms with Z = (m + n * twist/360) / rise: 59 A (n = -1), 51 A (n = +1), 36 nm crossover (n = +2), 27.5 A meridian (n = 0) | from 42.5 A / 73.7 deg; to be mapped from 8RVE |
 | Lattice read-out | protofilament number from the real-space equator count | twist / crossover length per filament | rise / twist, protofibril repeat, diameter |
-| Polarity read-out | phase invariants + iterative (done) | term route from tilt-series segments (done): (1,0), (-1,1), (3,-1) low band, (-4,2), (3,-1), (-1,1), (-3,2) mid band | term route from tilt series (testing) |
+| Polarity read-out | phase invariants + iterative (done) | term route from tilt-series segments (done): (1,0), (-1,1), (3,-1) low band, (-4,2), (3,-1), (-1,1), (-3,2) mid band | no lattice in 10 A tomograms or 10521 tilt series (term route; the synthetic control recovers it) |
 | Biological checks | neighbours, lamella-level clustering | bundle consistency (filopodia-like bundles are uniformly polar) | n/a |
 
 ## Package layout
@@ -151,6 +151,14 @@ tests/               # synthetic only (fast): MT plus/minus split, actin plus/mi
     the seed threshold on the decoys;
   - per-filament twist is not fitted (+-0.5 deg moves terms by << 1 Z bin);
   - straightening is sequential, and is the slowest step of a tilt-series run.
+- **IF through the term route from the tilt series (10521): no lattice.**
+  - 359 filaments, 1,240 segments of 764 A at 4.02 A.
+  - Low-band enrichment 1.46-1.48 against 1.55 for decoys, at the fitted rise and at 8RVE's.
+  - Halves 63-69/140 (decoys 63-82/140); z >= 3 for 14-16 (decoys 11-13); bundle pairs 10/20 (decoys 10/20).
+  - Data-built calls agree with the model's at chance (0.49-0.53).
+  - Positive control: synthetic 8RVE filaments through the same route are all called correctly at SNR 0.1 and 0.5
+    (low band 6.7-15.9 against 1.1-1.2).
+  - So the null is informative: these tilt series do not carry an IF lattice measurable per segment (heterogeneous
+    or non-8RVE-like filaments, or below the noise). Not written to copick; 10426 not tried.
 - **Status:** test refinements in ApexAgent (MT in portal_avg/10521/microtubule; IF in
-  portal_avg/10521/intermediate-filament) are running. IF through the term route from the tilt series is being
-  tested.
+  portal_avg/10521/intermediate-filament) are running.
