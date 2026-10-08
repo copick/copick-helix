@@ -1,7 +1,7 @@
 # copick-helix
 
-Fast, data-driven polarity, lattice and in-plane orientation of traced filaments (microtubules; actin and
-intermediate filaments in progress) in cryo-electron tomograms, for copick projects. No subtomogram refinement: each
+Fast, data-driven polarity, lattice and in-plane orientation of traced filaments (microtubules, actin; intermediate
+filaments in progress) in cryo-electron tomograms, for copick projects. No subtomogram refinement: each
 filament's own helical Fourier signal, restricted to where its structure puts signal, measured only where the tilt
 series sampled it.
 
@@ -23,6 +23,12 @@ copick process helix-polarity -c config.json \
     --work-dir helix_out/ -o "microtubule:helix/1"
 
 copick process helix-picks -c config.json -i "microtubule:helix/1" -o "microtubule:helix-picks/1" --every 1
+
+# actin: segments reconstructed from the tilt series (zarr-particle-tools), term route
+copick process helix-polarity -c config.json \
+    -i "actin:traces/1" -t "wbp-filtered@10.0" --family actin --tilt-range -45 63 \
+    --source tiltseries --tomograms-star relion_project/Import/job001/tomograms.star --bin 3 --workers 8 \
+    --work-dir helix_actin/ -o "actin:helix/1"
 ```
 
 `helix-polarity` straightens and recentres each filament and measures its helical parameters. It runs both polarity
@@ -44,9 +50,17 @@ In WORK_DIR it writes:
 Every particle sits on the same lattice position and in the same frame, so a refinement can start from local
 searches. `helix-polarity --picks URI --every n` writes the same dense picks directly from the analysis.
 
-`--family`: `microtubule` (13_3), `microtubule_N_S`, `intermediate_filament` (vimentin, 8RVE; needs the lattice
-gate). Actin is in progress. Use CTF-corrected tomograms: the polarity signal sits at 20-40 A, where the first CTF zero
-usually lies.
+`--family`: `microtubule` (13_3), `microtubule_N_S`, `actin` (6DJO; plus = barbed end), `intermediate_filament`
+(vimentin, 8RVE; needs the lattice gate). Use CTF-corrected tomograms for microtubules: the polarity signal sits at
+20-40 A, where the first CTF zero usually lies.
+
+**Actin** (and any family with an atomic model, via `--route terms`) uses the term route. A deconvolved 10 A tomogram
+cannot follow the depth-dependent defocus of a 7 nm filament, so `--source tiltseries` reconstructs every 760 A
+segment on its own from the tilt series (zarr-particle-tools, per-particle defocus, Wiener CTF correction; cached in
+WORK_DIR/segments). It needs a RELION `tomograms.star` and the directory its tilt-series paths are relative to
+(`--tiltseries-dir`, by default the project directory of an `Import/jobNNN/tomograms.star`). The term route also writes
+`segments.tsv` (per-segment registration and score) and `decoy_calls.tsv` (the same analysis on phase-scrambled
+segments). `polarity_known` is set only where polarity is detected over the decoys and the filament is confident.
 
 ## Methods
 
@@ -63,6 +77,15 @@ usually lies.
    to the family's Fourier support and converges from random starts.
 5. **Labels.** An atomic model (6DPV for microtubules) passed through the same steps names which group is plus. It
    is optional; relative polarity needs no model.
+6. **Term route** (`copick_helix.bands`, actin). Per segment, the coefficients of the family's strongest helical terms
+   on their exact layer-line planes. Each term is measured only in the in-plane band it was selected for (from the
+   atomic model on the data's grid, counting only terms the segment length resolves). The axis offset is refined
+   per segment on the 300-40 A band. The dataset's axial scale is fitted from the low-band layer lines. A data-built,
+   leave-one-filament-out reference from random polarity starts aligns every segment (rotation, shift over one rise)
+   and calls each filament. The halves, z scores and bundle-pair agreement are compared against the same pipeline on
+   phase-scrambled decoys; polarity counts as detected only when the halves agreement beats the decoys'. On the
+   tilt-series segments of EMPIAR-10521 (182 actin filaments) the halves agree for 105/135 filaments against 60/135
+   for decoys, and side-by-side bundle neighbours share polarity in 147/177 pairs against 93/177.
 
 ## Dependencies
 

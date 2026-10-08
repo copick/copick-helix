@@ -210,3 +210,83 @@ def save(result: Result, out_dir: str):
     if result.iterative is not None:
         result.iterative.runs.to_csv(os.path.join(out_dir, "iterative_runs.tsv"), sep="\t", index=False)
         np.save(os.path.join(out_dir, "iterative_reference_g.npy"), result.iterative.reference)
+
+
+# --------------------------------------------------------------------------------------------- term route (actin)
+
+
+def term_segments(filaments: dict[str, Straightened], segment_length: float) -> dict:
+    """Segments of straightened tomogram volumes for the term route (centre at index k n + n // 2)."""
+    from .bands import SegmentRef
+
+    out = {}
+    for name, st in filaments.items():
+        refs = []
+        for k, sl in st.segments(segment_length):
+            refs.append(SegmentRef(name, k, vol=st.vol[sl], step=st.step, beam=np.median(st.beam_local[sl], 0),
+                                   tilt=np.median(st.tilt_local[sl], 0)))
+        if refs:
+            out[name] = refs
+    return out
+
+
+def _term_regs(res, name):
+    from .registration import Registration
+
+    for row in res.segments[res.segments.filament == name].itertuples():
+        yield (Registration(int(row.segment), bool(row.flip), float(row.roll_deg), float(row.shift_A), float(row.score)),
+               (float(row.offset_e1_A), float(row.offset_e2_A)))
+
+
+def term_registration_particles(family: Family, filaments: dict[str, Straightened], res, segment_length: float,
+                                every: int | None = None) -> dict:
+    """As ``registration_particles``, for the term route: per filament (positions, rotations, scores, segment)."""
+    from .registration import term_particles
+
+    rise, twist = float(res.summary["rise"]), float(res.summary["twist"])
+    screw = family.screw({"rise": rise, "twist": twist})
+    out = {}
+    for name, st in filaments.items():
+        n = int(round(segment_length / st.step))
+        P, R, S, G = [], [], [], []
+        for reg, off in _term_regs(res, name):
+            s_centre = (reg.segment * n + n // 2) * st.step
+            pos, rots, _ = term_particles(st, s_centre, reg, off, screw, family.plus_at_minus_z, segment_length / 2,
+                                          every=every or 1, centre_only=every is None)
+            P.append(pos)
+            R.append(rots)
+            S.append(np.full(len(pos), reg.score))
+            G.append(np.full(len(pos), reg.segment))
+        if P:
+            out[name] = (np.concatenate(P), np.concatenate(R), np.concatenate(S), np.concatenate(G))
+    return out
+
+
+def term_average(family: Family, segments: dict, res, seeds: set | None = None, half_axial: float = 300.0) -> tuple:
+    """Fast average of the registered segments themselves (tilt-series reconstructions or tomogram slices) in the
+    exported frame (+Z towards the plus end): one particle per segment, its lattice point nearest the centre.
+    Returns (map [z, y, x], step)."""
+    from .registration import extract, local_frames, term_particles
+
+    rise, twist = float(res.summary["rise"]), float(res.summary["twist"])
+    screw = family.screw({"rise": rise, "twist": twist})
+    acc, n, step = None, 0, None
+    regs = {(f, int(k)): r for f in res.segments.filament.unique() for r in _term_regs(res, f) for k in [r[0].segment]}
+    for name, refs in segments.items():
+        if seeds is not None and name not in seeds:
+            continue
+        for ref in refs:
+            if (name, ref.index) not in regs:
+                continue
+            reg, off = regs[(name, ref.index)]
+            vol, step, _, _ = ref.load()
+            n_s, n_in = vol.shape[0], vol.shape[1]
+            grid = local_frames(n_s, step, n_in)
+            half_w = 0.9 * (n_in // 2) * step
+            pos, rots, _ = term_particles(grid, (n_s // 2) * step, reg, off, screw, family.plus_at_minus_z,
+                                          n_s * step / 2, centre_only=True)
+            sub = extract(vol - vol.mean(), step, np.zeros(3), pos[0], rots[0],
+                          (min(half_axial, 0.45 * n_s * step), half_w, half_w))
+            acc = sub if acc is None else acc + sub
+            n += 1
+    return (acc / max(n, 1) if acc is not None else None), step

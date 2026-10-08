@@ -41,7 +41,7 @@ package.
 | Recentring prior | ring, r 112 A | solid rod, r about 35 A | rod or tube, r about 50 A |
 | Fourier support | equator n = 0, +-13 k; monomer line n = 3 + 13 k | (n, m) terms with Z = (m + n * twist/360) / rise: 59 A (n = -1), 51 A (n = +1), 36 nm crossover (n = +2), 27.5 A meridian (n = 0) | from 42.5 A / 73.7 deg; to be mapped from 8RVE |
 | Lattice read-out | protofilament number from the real-space equator count | twist / crossover length per filament | rise / twist, protofibril repeat, diameter |
-| Polarity read-out | phase invariants + iterative (done) | phase invariants + iterative, terms from the 59/51/27.5 A lines (equator carries none) | null test |
+| Polarity read-out | phase invariants + iterative (done) | term route from tilt-series segments (done): (1,0), (-1,1), (3,-1) low band, (-4,2), (3,-1), (-1,1), (-3,2) mid band | term route from tilt series (testing) |
 | Biological checks | neighbours, lamella-level clustering | bundle consistency (filopodia-like bundles are uniformly polar) | n/a |
 
 ## Package layout
@@ -129,5 +129,28 @@ tests/               # synthetic only (fast): MT plus/minus split, actin plus/mi
 - **Open:** registration continuity along a filament. Neighbouring microtubule segments can register to seam positions
   that differ by a 13-fold near-symmetry. Measure it, then choose per segment the equivalent closest to its
   neighbours.
-- **Status:** actin family pending its fork's report. Test refinements in ApexAgent (MT in
-  portal_avg/10521/microtubule; IF in portal_avg/10521/intermediate-filament) are running.
+- **Actin (done): the term route** (`bands.py`, `tiltseries.py`, `--source tiltseries`).
+  - **Why tilt series:** per-filament polarity is not measurable in 10 A tomograms. Local reconstructions from the
+    tilt series carry it at 300-28 A.
+  - **What lost it at first:** the method, not the data. It weighted noise-dominated radii, and its term selection
+    counted the unresolvable crossover term (-2, 1), which pushed out (3, -1).
+  - **Method:** terms selected per band from 6DJO among those the segment length resolves; axis offset refined per
+    segment on the low band; dataset axial scale fitted, twist from the model; data-built leave-one-out reference;
+    phase-scrambled decoys as the false-positive baseline.
+  - **Reproduces the second actin fork on its segments (data / decoy):**
+
+    | | 10426 | 10521 |
+    |---|---|---|
+    | Halves agree | 154/220 / 112/220 | 105/135 / 60/135 |
+    | z >= 3 | 55 / 13 | 43 / 11 |
+    | Bundle pairs same polarity | 46/69 / 33/69 | 147/177 / 93/177 |
+
+    Calls agree 0.93 with the fork's data-built calls.
+- **Open (actin):**
+  - seeds include decoy-level false positives (decoys reach 7-9 'seeds' at the same rule against 36-44): calibrate
+    the seed threshold on the decoys;
+  - per-filament twist is not fitted (+-0.5 deg moves terms by << 1 Z bin);
+  - straightening is sequential, and is the slowest step of a tilt-series run.
+- **Status:** test refinements in ApexAgent (MT in portal_avg/10521/microtubule; IF in
+  portal_avg/10521/intermediate-filament) are running. IF through the term route from the tilt series is being
+  tested.

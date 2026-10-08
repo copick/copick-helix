@@ -20,6 +20,7 @@ dependencies = [
     "copick>=1.28.0,<2",
     "gemmi",
     "zarr-particle-tools>=1.0.1",
+    "starfile",
 ]
 
 [project.optional-dependencies]

@@ -75,7 +75,7 @@ COMMON = [
     click.option("-i", "--input", "input_uri", required=True, help="Filaments: object:user/session."),
     click.option("-t", "--tomogram", required=True, help="Tomogram: type@voxel_spacing (CTF-corrected)."),
     click.option("--family", "family_name", default="microtubule",
-                 help="microtubule[_N_S] | intermediate_filament (actin in progress)."),
+                 help="microtubule[_N_S] | actin | intermediate_filament."),
     click.option("--tilt-range", nargs=2, type=float, default=(-60.0, 60.0), help="Tilt range (deg)."),
     click.option("--tilt-axis", type=click.Choice(["y", "x"]), default="y", help="Tomogram axis of the tilt axis."),
     click.option("--min-length", type=float, default=None, help="Minimum filament length (A); default two segments."),
@@ -111,15 +111,41 @@ def straighten(config, run_names, input_uri, tomogram, family_name, tilt_range, 
 @click.option("--picks", "picks_uri", default=None, help="Also write dense lattice-registered picks: object:user/session.")
 @click.option("--every", type=int, default=1, help="With --picks: every n-th lattice point (MT dimer, helical subunit).")
 @click.option("--seeds-only/--all-filaments", default=True, help="Write registration and dense picks for seeds only.")
+@click.option("--source", type=click.Choice(["tomogram", "tiltseries"]), default="tomogram",
+              help="Term-route families (actin): segments from the straightened tomograms or reconstructed from the "
+                   "tilt series (zarr-particle-tools).")
+@click.option("--tomograms-star", default=None, type=click.Path(exists=True),
+              help="--source tiltseries: RELION tomograms.star of the tilt series.")
+@click.option("--tiltseries-dir", default=None, type=click.Path(exists=True),
+              help="--source tiltseries: directory the tilt-series star paths are relative to (default: the project "
+                   "directory three levels above --tomograms-star, as for <project>/Import/jobNNN/tomograms.star).")
+@click.option("--bin", "binning", type=int, default=3, help="--source tiltseries: binning of the reconstructions.")
+@click.option("--size-unit", "size_unit_A", type=float, default=None,
+              help="--source tiltseries: A per rlnTomoSize unit (default: from the copick tomogram extent).")
+@click.option("--snr", type=float, default=0.1, help="--source tiltseries: Wiener CTF correction offset 1/SNR.")
+@click.option("--workers", type=int, default=4, help="Worker processes (term route).")
+@click.option("--route", type=click.Choice(["auto", "terms", "cylindrical"]), default="auto",
+              help="auto: the family's own (actin: terms; microtubule, IF: cylindrical). terms: band-limited helical "
+                   "terms (copick_helix.bands) for any family with an atomic model.")
 @add_debug_option
 def polarity(config, run_names, input_uri, tomogram, family_name, tilt_range, tilt_axis, min_length, work_dir,
-             keep_volumes, methods, label, output_uri, picks_uri, every, seeds_only, debug):
+             keep_volumes, methods, label, output_uri, picks_uri, every, seeds_only, source, tomograms_star,
+             tiltseries_dir, binning, size_unit_A, snr, workers, route, debug):
     """Polarity, lattice registration and an initial model for traced filaments, from their own helical Fourier
     signal (phase invariants and the iterative, data-built reference). Writes WORK_DIR/calls.tsv, summary.json and
-    reference_<family>.mrc (the fast average of the registration particles, +Z towards the plus end)."""
+    reference_<family>.mrc (the fast average of the registration particles, +Z towards the plus end).
+
+    Actin uses the term route (band-limited helical terms, a data-built reference and decoys; see copick_helix.bands)
+    and needs --source tiltseries on 10 A data; it also writes segments.tsv (per-segment registration) and
+    decoy_calls.tsv."""
     family = get_family(family_name)
+    terms = route == "terms" or (route == "auto" and family.route == "terms")
     root, fils = _straighten_all(config, run_names, input_uri, tomogram, family, tilt_range, tilt_axis,
-                                 min_length or 2 * family.segment_length, work_dir, keep_volumes)
+                                 min_length or 2 * (family.term_segment_length if terms else family.segment_length),
+                                 work_dir, keep_volumes)
+    if terms:
+        return _polarity_terms(root, fils, family, work_dir, label, output_uri, picks_uri, every, seeds_only, tomogram,
+                               source, tomograms_star, tiltseries_dir, binning, size_unit_A, snr, workers)
     params = measure_parameters(family, fils)
     gate = lattice_gate(family, fils, params)
     click.echo("lattice gate (pooled enrichment, data / decoy): " +
@@ -158,12 +184,25 @@ def polarity(config, run_names, input_uri, tomogram, family_name, tilt_range, ti
         return
 
     call_col = "call" if "call" in table else ("inv_call" if mc is not None else "it_call")
-    rows = table.set_index("filament")
     reg = registration_particles(family, fils, params, it)
     dense = registration_particles(family, fils, params, it, every=every) if picks_uri else {}
+    _write_copick(root, fils, family, table, call_col, reg, dense, output_uri, picks_uri, seeds_only, gate["detected"],
+                  ref_path)
+
+
+def _write_copick(root, fils, family, table, call_col, reg, dense, output_uri, picks_uri, seeds_only, lattice_detected,
+                  ref_path):
+    """Centre-line filaments (ordered minus -> plus when known; analysis in metadata), registration picks under the
+    same URI, and optional dense picks."""
+    rows = table.set_index("filament")
     by_run: dict = {}
     for name, st in fils.items():
-        by_run.setdefault(st.meta["run"], []).append(name)
+        if name in rows.index:
+            by_run.setdefault(st.meta["run"], []).append(name)
+
+    def selected(names, store):
+        return [n for n in names if n in store and (not seeds_only or bool(rows.loc[n].get("seed", False)))]
+
     for run, names in by_run.items():
         if output_uri:
             obj, user, session = _filament_uri(output_uri)
@@ -178,12 +217,12 @@ def polarity(config, run_names, input_uri, tomogram, family_name, tilt_range, ti
                     "reverse": call == "plus",  # 'plus': plus end at the first trace point -> reverse to minus -> plus
                     "known": seed and call in ("plus", "minus"),
                     "metadata": {"copick_helix": {"version": __version__, "family": family.name, "call": call,
-                                                  "seed": seed, "lattice_detected": gate["detected"],
+                                                  "seed": seed, "lattice_detected": lattice_detected,
                                                   "polarity_convention": "minus_to_plus" if call in ("plus", "minus") else None,
                                                   "registration_picks": output_uri, "reference_map": ref_path,
                                                   "analysis": info}}})
             io.write_centrelines(root, run, obj, user, session, items)
-            sel = [n for n in names if n in reg and (not seeds_only or bool(rows.loc[n].get("seed", False)))]
+            sel = selected(names, reg)
             if sel:
                 io.write_particles(root, run, obj, user, session, np.concatenate([reg[n][0] for n in sel]),
                                    np.concatenate([reg[n][1] for n in sel]),
@@ -191,13 +230,78 @@ def polarity(config, run_names, input_uri, tomogram, family_name, tilt_range, ti
                                    np.concatenate([reg[n][2] for n in sel]))
         if picks_uri:
             obj, user, session = _filament_uri(picks_uri)
-            sel = [n for n in names if n in dense and (not seeds_only or bool(rows.loc[n].get("seed", False)))]
+            sel = selected(names, dense)
             if sel:
                 io.write_particles(root, run, obj, user, session, np.concatenate([dense[n][0] for n in sel]),
                                    np.concatenate([dense[n][1] for n in sel]),
                                    np.concatenate([np.full(len(dense[n][0]), fils[n].meta["instance_id"]) for n in sel]),
                                    np.concatenate([dense[n][2] for n in sel]))
     click.echo(f"wrote {output_uri or ''} {picks_uri or ''} for {len(by_run)} runs")
+
+
+def _polarity_terms(root, fils, family, work_dir, label, output_uri, picks_uri, every, seeds_only, tomogram, source,
+                    tomograms_star, tiltseries_dir, binning, size_unit_A, snr, workers):
+    """The term route (actin; any family with a term model): segments from the tilt series or the straightened
+    tomograms, band-limited terms, data-built reference, decoys."""
+    from . import bands, tiltseries
+    from .pipeline import term_average, term_registration_particles, term_segments
+
+    L = family.term_segment_length
+    if source == "tiltseries":
+        if not tomograms_star:
+            raise click.UsageError("--source tiltseries needs --tomograms-star")
+        src = tiltseries.TiltSeriesSource(tomograms_star, tiltseries_dir or os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(tomograms_star)))), binning=binning, snr=snr, size_unit_A=size_unit_A,
+            scratch=os.path.join(work_dir, "tmp"))
+        os.makedirs(src.scratch, exist_ok=True)
+        tomo_type, vs = _tomo_uri(tomogram)
+        extents = {}
+        for run in {st.meta["run"] for st in fils.values()}:
+            extents[run] = (io.tomogram_extent(root, run, vs, tomo_type)[0], vs)
+        segs = tiltseries.reconstruct(fils, L, family.term_half_width, src, extents,
+                                      os.path.join(work_dir, "segments"), workers=workers, log=click.echo)
+    else:
+        segs = term_segments(fils, L)
+    res = bands.analyse(segs, family, bands.TermConfig(r_out=family.term_r_out), workers=workers, label=label,
+                        log=click.echo)
+    s = res.summary
+    geo = {n: (st.meta["run"], st.centres[::10], st.t[::10]) for n, st in fils.items()}
+    s["bundle_pairs_same_polarity"] = {}
+    for key, tab in (("data", res.table), ("decoy", res.decoy_table)):
+        if tab is None:
+            continue
+        pr = bands.bundle_pairs(geo, dict(zip(tab.filament, tab.pol)), list(tab.filament))
+        s["bundle_pairs_same_polarity"][key] = [int(sum(p[2] for p in pr)), len(pr)]
+    table = res.table
+    os.makedirs(work_dir, exist_ok=True)
+    table.to_csv(os.path.join(work_dir, "calls.tsv"), sep="\t", index=False)
+    res.segments.to_csv(os.path.join(work_dir, "segments.tsv"), sep="\t", index=False)
+    if res.decoy_table is not None:
+        res.decoy_table.to_csv(os.path.join(work_dir, "decoy_calls.tsv"), sep="\t", index=False)
+    seeds = set(table.filament[table.seed])
+    ref, rstep = term_average(family, segs, res, seeds or None)
+    ref_path = None
+    if ref is not None:
+        ref_path = os.path.abspath(os.path.join(work_dir, f"reference_{family.name}.mrc"))
+        with mrcfile.new(ref_path, overwrite=True) as m:
+            m.set_data(ref.astype(np.float32))
+            m.voxel_size = rstep
+    s.update({"family": family.name, "version": __version__, "route": "terms", "source": source,
+              "reference_map": ref_path})
+    json.dump(s, open(os.path.join(work_dir, "summary.json"), "w"), indent=1, default=str)
+    click.echo(f"enrichment (data / decoy): " + ", ".join(f"{b}: {v['data']:.2f}/{v.get('decoy', float('nan')):.2f}"
+                                                          for b, v in s["enrichment"].items()))
+    if "data" in s:
+        click.echo(f"halves agree {s['data']['halves_agree']}/{s['data']['halves_n']} (decoy "
+                   f"{s['decoy']['halves_agree']}/{s['decoy']['halves_n']}); z >= 3: {s['data']['z_ge_seed']} (decoy "
+                   f"{s['decoy']['z_ge_seed']}); bundle pairs same polarity {s['bundle_pairs_same_polarity']}; "
+                   f"polarity detected: {s['polarity_detected']}; seeds {s['seeds']}")
+    if not (output_uri or picks_uri):
+        return
+    reg = term_registration_particles(family, fils, res, L)
+    dense = term_registration_particles(family, fils, res, L, every=every) if picks_uri else {}
+    _write_copick(root, fils, family, table, "call", reg, dense, output_uri, picks_uri, seeds_only,
+                  s.get("lattice_detected"), ref_path)
 
 
 @click.command("helix-picks", context_settings={"show_default": True})

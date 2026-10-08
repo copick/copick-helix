@@ -115,3 +115,47 @@ def local_frames(n_s: int, step: float, n_inplane: int):
     eye = np.eye(3)
     return SimpleNamespace(centres=c, step=step, t=np.tile(eye[2], (n_s, 1)), e1=np.tile(eye[0], (n_s, 1)),
                            e2=np.tile(eye[1], (n_s, 1)))
+
+
+def term_particles(st, s_centre: float, reg: Registration, offset: tuple, screw: tuple[float, float],
+                   plus_at_minus_z: bool, half_length: float, every: int = 1, centre_only: bool = False):
+    """Lattice-registered particles of a segment registered in the term route (``bands``), whose coordinates have the
+    segment centre as origin: a reference point x sits in the segment at
+
+        y = F_p Rz(-roll) (x - shift z^) + (dx, dy, 0),
+
+    (dx, dy) = ``offset``, the refined axis position along (e1, e2). ``st``: centre line and frames along the filament
+    (centres, e1, e2, t sampled every st.step A); ``s_centre``: arc length of the segment centre. Lattice points
+    (0, 0, j P) within +-half_length of the centre; rotations A = [e1 e2 t] F_p Rz(-roll) Rz(j omega), turned by FLIP
+    when the reference has its plus end at -z. Returns positions (n, 3), rotations (n, 3, 3), arc lengths (n,)."""
+    P, omega = screw
+    F_p = FLIP if reg.flip else np.eye(3)
+    R_loc = F_p @ rz(-reg.roll_deg)
+    sign = -1.0 if reg.flip else 1.0
+    k = int(np.ceil(half_length / P)) + 2
+    js = np.arange(-k, k + 1)
+    y = sign * (js * P - reg.shift_A)
+    inside = np.abs(y) <= half_length
+    js, y = js[inside], y[inside]
+    order = np.argsort(y)
+    js, y = js[order], y[order]
+    if centre_only:
+        i = int(np.argmin(np.abs(y)))
+        js, y = js[i:i + 1], y[i:i + 1]
+    elif every > 1:
+        js, y = js[::every], y[::every]
+    s = s_centre + y
+    n_s = len(st.centres)
+    idx = np.clip(s / st.step, 0, n_s - 1)
+    i0 = np.floor(idx).astype(int)
+    i1 = np.minimum(i0 + 1, n_s - 1)
+    w = (idx - i0)[:, None]
+    pos = (1 - w) * st.centres[i0] + w * st.centres[i1]
+    rots = []
+    for q, j in enumerate(js):
+        i = int(round(idx[q]))
+        B = np.stack([st.e1[i], st.e2[i], st.t[i]], axis=1)
+        pos[q] = pos[q] + offset[0] * st.e1[i] + offset[1] * st.e2[i]
+        A = B @ R_loc @ rz(j * omega)
+        rots.append(A @ FLIP if plus_at_minus_z else A)
+    return pos, np.array(rots).reshape(-1, 3, 3), s

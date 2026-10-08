@@ -36,6 +36,14 @@ def read_tomogram(root, run_name: str, voxel_spacing: float, tomo_type: str, lev
     return np.asarray(zarr.open(tomo.zarr(), mode="r")[level][:], dtype=np.float32)
 
 
+def tomogram_extent(root, run_name: str, voxel_spacing: float, tomo_type: str):
+    """(x, y, z) physical extent of a tomogram in A, from its zarr shape (no data read)."""
+    run = root.get_run(run_name)
+    tomo = run.get_voxel_spacing(voxel_spacing).get_tomograms(tomo_type)[0]
+    shape = zarr.open(tomo.zarr(), mode="r")["0"].shape  # (z, y, x)
+    return shape[2] * voxel_spacing, shape[1] * voxel_spacing, shape[0] * voxel_spacing
+
+
 def write_centrelines(root, run_name: str, object_name: str, user_id: str, session_id: str, items: list[dict],
                       control_spacing: float = 100.0, step: float = 10.0):
     """Filaments as Catmull-Rom curves through the recentred centre line (control points every ``control_spacing``

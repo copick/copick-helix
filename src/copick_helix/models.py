@@ -211,3 +211,84 @@ class HelicalModel:
 def _rotz(phi):
     c, s = np.cos(phi), np.sin(phi)
     return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1.0]])
+
+
+def _kabsch(P, Q):
+    """R, t with Q ~ P R^T + t."""
+    pc, qc = P.mean(0), Q.mean(0)
+    U, _, Vt = np.linalg.svd((P - pc).T @ (Q - qc))
+    d = np.sign(np.linalg.det(Vt.T @ U.T))
+    R = Vt.T @ np.diag([1, 1, d]) @ U.T
+    return R, qc - R @ pc
+
+
+class HelicalProtomer:
+    """One subunit of a 1-start helical filament in the filament frame (axis = z through the origin) and the helix
+    relating consecutive subunits: subunit k is the protomer rotated by k * twist about z and shifted by k * rise.
+
+    Built from two consecutive chains of a deposited model (``chain_b`` the next subunit along the 1-start helix from
+    ``chain_a``): their CA superposition is a screw whose axis, angle and rise are the filament's, so the helical
+    parameters and the axis come from the model itself. Residue numbers are kept, so structural landmarks (actin's
+    subdomain 2, which points to the pointed end) can name the ends."""
+
+    def __init__(self, xyz, w, res, rise, twist):
+        self.xyz, self.w, self.res, self.rise, self.twist = xyz, w, res, rise, twist
+
+    @classmethod
+    def from_model(cls, pdb_id: str, chain_a: str, chain_b: str, cif: str | None = None) -> "HelicalProtomer":
+        import gemmi
+
+        m = gemmi.read_structure(fetch_pdb(pdb_id, cif))[0]
+
+        def ca(name):
+            out = {}
+            for r in m[name]:
+                a = r.find_atom("CA", "*")
+                if a is not None and r.het_flag != "H":
+                    out[r.seqid.num] = np.array(a.pos.tolist())
+            return out
+
+        A, B = ca(chain_a), ca(chain_b)
+        common = sorted(set(A) & set(B))
+        R, t = _kabsch(np.array([A[k] for k in common]), np.array([B[k] for k in common]))
+        w_, v = np.linalg.eig(R)
+        ax = np.real(v[:, np.argmin(abs(w_ - 1))])
+        ax /= np.linalg.norm(ax)
+        ang = np.degrees(np.arctan2(ax @ np.array([R[2, 1] - R[1, 2], R[0, 2] - R[2, 0], R[1, 0] - R[0, 1]]),
+                                    np.trace(R) - 1))
+        rise = float(t @ ax)
+        p = np.linalg.lstsq(np.eye(3) - R, t - rise * ax, rcond=None)[0]
+        if rise < 0:  # orient the axis so that the step chain_a -> chain_b rises
+            ax, ang, rise = -ax, -ang, -rise
+        x = np.cross([0, 1.0, 0], ax)
+        if np.linalg.norm(x) < 1e-6:
+            x = np.cross([1.0, 0, 0], ax)
+        x /= np.linalg.norm(x)
+        Rot = np.stack([x, np.cross(ax, x), ax])
+        xyz, w, res = [], [], []
+        for r in m[chain_a]:
+            if r.het_flag == "H" and r.name == "HOH":
+                continue
+            for a in r:
+                xyz.append(a.pos.tolist())
+                w.append(Z_OF.get(a.element.name.upper(), 6))
+                res.append(r.seqid.num if r.het_flag != "H" else -1)
+        return cls((np.array(xyz) - p) @ Rot.T, np.array(w, float), np.array(res), rise, float(ang))
+
+    def offset_along_axis(self, residues) -> float:
+        """z of the centroid of ``residues`` (iterable of residue numbers) relative to the protomer centroid (A)."""
+        sel = np.isin(self.res, list(residues))
+        prot = self.res > 0
+        return float(self.xyz[sel, 2].mean() - self.xyz[prot, 2].mean())
+
+    def atoms(self, length: float, flip: bool = False):
+        """Filament along z in [0, length), axis through x = y = 0; flip: 180 deg about x (the other polarity)."""
+        zc = self.xyz[:, 2].mean()
+        ks = np.arange(int(np.floor((-60 - zc) / self.rise)) - 1, int(np.ceil((length + 60 - zc) / self.rise)) + 2)
+        xyz = np.vstack([self.xyz @ _rotz(np.radians(k * self.twist)).T + [0, 0, k * self.rise] for k in ks])
+        w = np.tile(self.w, len(ks))
+        keep = (xyz[:, 2] >= 0) & (xyz[:, 2] < length)
+        xyz, w = xyz[keep], w[keep]
+        if flip:
+            xyz = xyz * np.array([1, -1, -1]) + np.array([0, 0, length])
+        return xyz, w

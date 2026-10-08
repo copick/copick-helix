@@ -8,6 +8,7 @@ actin and IF rise and twist) are measured per filament and passed in.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -57,6 +58,11 @@ class Family:
     recentre_max_shift: float = 100.0  # A, cap on a window's correction
     screw: Callable = None  # reference params -> (P A, omega deg): the lattice's symmetry step along the axis
     plus_at_minus_z: bool = False  # the labelling model (and so the oriented reference) has its plus end at -z
+    route: str = "cylindrical"  # "cylindrical": invariants + iterative (MT); "terms": band-limited terms (bands.py)
+    term_model: Callable = None  # (step, n_inplane, length) -> (model vol [z, y, x], rise, twist), plus end at -z
+    term_r_out: float = 60.0  # A, cross-section mask radius of the term route
+    term_segment_length: float = 760.0  # A, term-route segment (tilt-series particle) length
+    term_half_width: float = 120.0  # A, in-plane crop of a tilt-series segment
     notes: dict = field(default_factory=dict)
 
     def support(self, z_max: float, n_max: int, **params) -> Support:
@@ -119,7 +125,8 @@ def helical_family(name: str, polar: bool, rise: float, twist: float, terms, tri
                    in_plane_half_width: float = 200.0, plane_tol_bins: float = 0.5, support_z_bins: float = 1.0,
                    support_drop_n0: bool = True, support_eq_nmax: int = -1, support_eq_band: float = 0.0,
                    recentre_window: float = 300.0, recentre_max_shift: float = 100.0, min_line_snr: float = 3.0,
-                   plus_at_minus_z: bool = False, notes: dict | None = None) -> Family:
+                   plus_at_minus_z: bool = False, term_r_out: float = 75.0, term_segment_length: float = 760.0,
+                   term_half_width: float = 130.0, notes: dict | None = None) -> Family:
     """A 1-start helical family (rise, physical twist) whose per-filament rise and twist come from two measured layer
     lines (``fit_lines``: two Terms with different n). Filaments are stretched to the reference rise for the iterative
     reference (a twist mismatch moves layer lines by << 1 Z bin per segment)."""
@@ -145,6 +152,12 @@ def helical_family(name: str, polar: bool, rise: float, twist: float, terms, tri
         m = HelicalModel(model_pdb, rise, twist)
         return on_grid(*m.atoms(segment_length), st.step, st.vol.shape[1], segment_length), dict(ref)
 
+    def term_model(step, n_inplane, length):
+        from .models import HelicalModel, on_grid
+
+        m = HelicalModel(model_pdb, rise, twist)
+        return on_grid(*m.atoms(length), step, n_inplane, length, res=2.5 * step), rise, m.twist_deposited
+
     return Family(name=name, polar=polar, symmetry=symmetry, reference_params=ref, terms=list(terms),
                   triples=list(triples), r_out=r_out, r_mask=r_mask, cyl_band=cyl_band, segment_length=segment_length,
                   in_plane_half_width=in_plane_half_width, recentre_profile=recentre_profile, profile_band=profile_band,
@@ -152,7 +165,9 @@ def helical_family(name: str, polar: bool, rise: float, twist: float, terms, tri
                   label_model=label_model, plane_tol_bins=plane_tol_bins, support_z_bins=support_z_bins,
                   support_drop_n0=support_drop_n0, support_eq_nmax=support_eq_nmax, support_eq_band=support_eq_band,
                   recentre_window=recentre_window, recentre_max_shift=recentre_max_shift,
-                  screw=lambda p: (p["rise"], p["twist"]), plus_at_minus_z=plus_at_minus_z, notes=notes or {})
+                  screw=lambda p: (p["rise"], p["twist"]), plus_at_minus_z=plus_at_minus_z, term_model=term_model,
+                  term_r_out=term_r_out, term_segment_length=term_segment_length, term_half_width=term_half_width,
+                  notes=notes or {})
 
 
 def intermediate_filament() -> Family:
@@ -176,8 +191,57 @@ def intermediate_filament() -> Family:
         notes={"lattice_gate": "required before interpreting polarity", "model": "PDB 8RVE (vimentin), EMD-16844"})
 
 
+_ACTIN = {}
+
+
+def _actin_protomer():
+    """6DJO (ADP F-actin, 3.6 A): chain C is the next subunit along the 1-start helix from chain B."""
+    if "p" not in _ACTIN:
+        from .models import HelicalProtomer
+
+        _ACTIN["p"] = HelicalProtomer.from_model("6DJO", "B", "C", cif=os.environ.get("COPICK_HELIX_6DJO"))
+    return _ACTIN["p"]
+
+
+def actin() -> Family:
+    """F-actin, from PDB 6DJO (rise 27.62 A, twist -166.65 deg, from the model's own chain-to-chain screw).
+
+    Naming: plus = barbed end, minus = pointed end, so points ordered minus -> plus run pointed -> barbed. Subdomain 2
+    (residues 33-69, the D-loop) points to the pointed end; the model is built so that the barbed end is at -z
+    (``plus_at_minus_z``, as for microtubules), which makes the exported particle frames point +Z to the barbed end.
+
+    Polarity uses the term route (``bands``): band-limited helical terms selected from the model on the data's grid,
+    the axis offset refined per segment, a data-built leave-one-filament-out reference, and phase-scrambled decoys. In
+    10 A tomograms the polar terms are not measurable; local reconstructions from the tilt series are needed
+    (``--source tiltseries``). Most of the information sits at 300-28 A."""
+    rise0, twist0 = 27.6176, -166.6545
+
+    def term_model(step, n_inplane, length):
+        from .models import on_grid
+
+        P = _actin_protomer()
+        flip = P.offset_along_axis(range(33, 70)) < 0  # pointed end at -z as built: flip, so the barbed end is at -z
+        xyz, w = P.atoms(length, flip=flip)
+        return on_grid(xyz, w, step, n_inplane, length, res=2.5 * step), P.rise, P.twist
+
+    def label_model(st):
+        vol, rise, twist = term_model(st.step, st.vol.shape[1], 760.0)
+        return vol, {"rise": rise, "twist": twist}
+
+    return Family(
+        name="actin", polar=True, symmetry=lambda rise, twist: HelicalSymmetry(rise=rise, twist=twist),
+        reference_params={"rise": rise0, "twist": twist0}, terms=[], triples=[], r_out=50.0, r_mask=60.0,
+        cyl_band=(0.0, 60.0), segment_length=760.0, in_plane_half_width=120.0, recentre_profile=_rod(30.0, 8.0),
+        profile_band=(5.0, 35.0), measure=None, label_model=label_model, recentre_window=400.0,
+        recentre_max_shift=40.0, screw=lambda p: (p["rise"], p["twist"]), plus_at_minus_z=True, route="terms",
+        term_model=term_model, term_r_out=60.0, term_segment_length=760.0, term_half_width=120.0,
+        notes={"model": "PDB 6DJO (ADP F-actin); SD2 (res 33-69) points to the pointed end",
+               "polarity_convention": "plus = barbed, minus = pointed; points ordered pointed -> barbed when known",
+               "data": "tilt-series reconstructions (--source tiltseries); tomograms at 10 A carry no polar signal"})
+
+
 def get_family(name: str) -> Family:
-    """'microtubule' (13_3), 'microtubule_N_S', 'actin', 'intermediate_filament'."""
+    """'microtubule' (13_3), 'microtubule_N_S', 'actin', 'intermediate_filament'."""  # noqa: D401
     key = name.lower().replace("-", "_")
     if key.startswith("microtubule"):
         parts = key.split("_")[1:]
@@ -187,4 +251,4 @@ def get_family(name: str) -> Family:
     raise ValueError(f"unknown family {name!r}; known: microtubule[_N_S], {', '.join(FAMILIES)}")
 
 
-FAMILIES: dict[str, Callable[[], Family]] = {"intermediate_filament": intermediate_filament}
+FAMILIES: dict[str, Callable[[], Family]] = {"intermediate_filament": intermediate_filament, "actin": actin}
