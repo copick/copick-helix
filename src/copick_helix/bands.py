@@ -32,7 +32,7 @@ from __future__ import annotations
 import json
 import os
 from concurrent.futures import ProcessPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -610,6 +610,7 @@ def analyze(
         out[decoy] = (stats, segdf, enr, seg["orient"], mstats)
     stats, segdf, enr, orient, mstats = out[False]
     summary = {
+        "term_config": asdict(cfg),
         "rise": rise,
         "twist": twist,
         "model_rise": mrise,
