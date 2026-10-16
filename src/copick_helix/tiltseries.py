@@ -254,6 +254,22 @@ def _reconstruct_tomogram(job):
     return tname, len(todo), time.time() - t0
 
 
+def _reconstruction_jobs(by_tomo, source, box, half_px, workers):
+    """Disjoint pending batches, including parallel batches within a tilt series.
+
+    Each batch owns its temporary extraction store. Keep small tilt series together
+    to avoid repeatedly reading their projections for only a few segments.
+    """
+    pending = {name: [s for s in segs if not os.path.exists(s["stem"] + ".npy")] for name, segs in by_tomo.items()}
+    total = sum(map(len, pending.values()))
+    chunk = max(32, int(np.ceil(total / max(workers, 1))))
+    return [
+        (name, segs[start : start + chunk], source, box, half_px)
+        for name, segs in pending.items()
+        for start in range(0, len(segs), chunk)
+    ]
+
+
 def reconstruct(
     filaments: dict,
     segment_length: float,
@@ -267,7 +283,8 @@ def reconstruct(
     """Reconstruct (or reuse from ``out_dir``) every segment; returns {filament: [bands.SegmentRef]}.
 
     The box is cubic, the smallest even number of binned pixels holding ``segment_length``; the in-plane crop keeps
-    +-``half_width`` A (CTF correction happens on the full box first, so delocalised signal is already back)."""
+    +-``half_width`` A (CTF correction happens on the full box first, so delocalised signal is already back).
+    Pending segments are batched across workers even when there is only one tilt series."""
     import multiprocessing as mp
 
     from .bands import SegmentRef
@@ -281,9 +298,9 @@ def reconstruct(
     log(
         f"{n} segments in {len(by_tomo)} tilt series: box {box} px at {px:.3f} A ({box * px:.0f} A), crop +-{half_px} px",
     )
-    jobs = [(t, s, source, box, half_px) for t, s in by_tomo.items()]
-    if workers > 1:
-        with mp.get_context("spawn").Pool(workers) as pool:
+    jobs = _reconstruction_jobs(by_tomo, source, box, half_px, workers)
+    if workers > 1 and len(jobs) > 1:
+        with mp.get_context("spawn").Pool(min(workers, len(jobs))) as pool:
             for tname, k, dt in pool.imap_unordered(_reconstruct_tomogram, jobs):
                 log(f"{tname}: {k} segments in {dt:.0f} s")
     else:
