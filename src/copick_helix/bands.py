@@ -649,20 +649,20 @@ def analyze(
         both = stats.set_index("filament").pol * mstats.set_index("filament").sign
         summary["data_vs_model_calls"] = float(np.mean(both.dropna() > 0))
     stats["call"] = [("plus" if p > 0 else "minus") if label else ("A" if p > 0 else "B") for p in stats["pol"]]
-    stats["seed"] = (
-        (stats.z >= cfg.z_seed)
-        & (stats.halves_agree is True)
-        & (stats.stability >= cfg.min_stability)  # noqa: E712
-        & bool(summary["polarity_detected"] if summary["polarity_detected"] is not None else True)
+    stats["seed"] = _seed_mask(stats, cfg) & bool(
+        summary["polarity_detected"] if summary["polarity_detected"] is not None else True,
     )
     stats["rise"], stats["twist"], stats["segment_length_A"] = rise, twist, L
     if cfg.decoys:
         q = out[True][0]
-        n_seed_decoy = int(
-            ((q.z >= cfg.z_seed) & (q.halves_agree is True) & (q.stability >= cfg.min_stability)).sum(),
-        )  # noqa: E712
+        n_seed_decoy = int(_seed_mask(q, cfg).sum())
         summary["seeds"] = {"data": int(stats.seed.sum()), "decoy_at_same_rule": n_seed_decoy}
     return TermResult(stats, segdf, summary, out[True][0] if cfg.decoys else None)
+
+
+def _seed_mask(table, cfg):
+    """Apply the same per-filament eligibility rule to observations and decoys."""
+    return (table.z >= cfg.z_seed) & table.halves_agree.eq(True).fillna(False) & (table.stability >= cfg.min_stability)
 
 
 def _dataset_stats(t, cfg):
