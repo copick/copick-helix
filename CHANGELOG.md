@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.0](https://github.com/copick/copick-helix/compare/copick-helix-v0.1.0...copick-helix-v0.2.0) (2026-10-19)
+
+
+### Features
+
+* **terms:** --term-axis-shift, with the term config in summary.json ([322413e](https://github.com/copick/copick-helix/commit/322413e05639c0b47cfd9efc68c59ea27ea7ff6a))
+
+
+### Bug Fixes
+
+* **terms:** actin seeds, --term-axis-shift and batched tilt-series reconstructions ([cd543d2](https://github.com/copick/copick-helix/commit/cd543d2a9af7c241e2f5db5406241cbcbbbee1be))
+* **terms:** seeds on the term route again, and batched reconstructions ([3614c79](https://github.com/copick/copick-helix/commit/3614c79cda39be7df3699f21c94ffe37b7d9d744))
+
 ## 0.1.0 (2026-10-16)
 
 
