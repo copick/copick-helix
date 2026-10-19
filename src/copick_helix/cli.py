@@ -366,6 +366,12 @@ def recenter(
 @click.option("--snr", type=float, default=0.1, help="--source tiltseries: Wiener CTF correction offset 1/SNR.")
 @click.option("--workers", type=int, default=4, help="Worker processes (term route).")
 @click.option(
+    "--term-axis-shift",
+    type=click.FloatRange(min=0.0),
+    default=12.0,
+    help="Term route: maximum axis-offset refinement in A, using low-band terms only.",
+)
+@click.option(
     "--route",
     type=click.Choice(["auto", "terms", "cylindrical"]),
     default="auto",
@@ -397,6 +403,7 @@ def polarity(
     size_unit_A,
     snr,
     workers,
+    term_axis_shift,
     route,
     debug,
 ):
@@ -429,6 +436,8 @@ def polarity(
         _write_recentered(root, fils, family, output_uri, picks_uri, every * _axial_step(family))
         return
     terms = route == "terms" or (route == "auto" and family.route == "terms")
+    if not terms and term_axis_shift != 12.0:
+        raise click.UsageError("--term-axis-shift applies only to the term route")
     root, fils = _straighten_all(
         config,
         run_names,
@@ -461,6 +470,7 @@ def polarity(
             size_unit_A,
             snr,
             workers,
+            term_axis_shift,
         )
     params = measure_parameters(family, fils)
     gate = lattice_gate(family, fils, params)
@@ -634,6 +644,7 @@ def _polarity_terms(
     size_unit_A,
     snr,
     workers,
+    term_axis_shift=12.0,
 ):
     """The term route (actin; any family with a term model): segments from the tilt series or the straightened
     tomograms, band-limited terms, data-built reference, decoys."""
@@ -672,7 +683,7 @@ def _polarity_terms(
     res = bands.analyze(
         segs,
         family,
-        bands.TermConfig(r_out=family.term_r_out),
+        bands.TermConfig(r_out=family.term_r_out, max_shift=term_axis_shift),
         workers=workers,
         label=label,
         log=click.echo,
