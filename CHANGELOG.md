@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/copick/copick-helix/compare/copick-helix-v0.2.0...copick-helix-v0.2.1) (2026-11-03)
+
+
+### Bug Fixes
+
+* Bump chanzuckerberg/github-actions from 6.41.3 to 6.42.2 ([#10](https://github.com/copick/copick-helix/issues/10)) ([59604df](https://github.com/copick/copick-helix/commit/59604df4d707bcde4652a077acca9e825deb6419))
+
 ## [0.2.0](https://github.com/copick/copick-helix/compare/copick-helix-v0.1.0...copick-helix-v0.2.0) (2026-10-19)
 
 
